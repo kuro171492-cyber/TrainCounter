@@ -46,6 +46,7 @@
     const ArrowUp = pickIcon('ArrowUp');
     const CopyPlus = pickIcon('CopyPlus');
     const Settings2 = pickIcon('Settings2');
+    const Pencil = pickIcon('Pencil');
     const Timer = pickIcon('Timer');
     const Hash = pickIcon('Hash');
     const Lock = pickIcon('Lock');
@@ -102,7 +103,7 @@ const adjustWeight = (val, delta) => {
   return Math.max(0, +(num + delta).toFixed(2)).toString();
 };
 
-const SmartInput = ({ value, onChange, className, placeholder, defaultValue }) => {
+const SmartInput = ({ value, onChange, className, placeholder, defaultValue, allowInlineEdit = true, editTrigger = 0 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const timerRef = useRef(null);
   const inputRef = useRef(null);
@@ -120,6 +121,7 @@ const SmartInput = ({ value, onChange, className, placeholder, defaultValue }) =
   };
 
   const handleTouchStart = (e) => {
+    if (!allowInlineEdit) return;
     timerRef.current = setTimeout(() => {
       startEditing();
     }, 600);
@@ -134,10 +136,15 @@ const SmartInput = ({ value, onChange, className, placeholder, defaultValue }) =
   };
 
   const handleDoubleClick = (e) => {
+    if (!allowInlineEdit) return;
     e.stopPropagation();
     e.preventDefault();
     startEditing();
   };
+
+  useEffect(() => {
+    if (editTrigger > 0) startEditing();
+  }, [editTrigger]);
 
   const handleBlur = (e) => {
     setIsEditing(false);
@@ -789,6 +796,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
 }
 
 function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable }) {
+  const [nameEditTrigger, setNameEditTrigger] = useState(0);
   if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} />;
 
   const isAllDone = block.setsData?.every(s => s.completed) && block.setsData?.length > 0;
@@ -858,12 +866,21 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
               {isAllDone ? <Check size={18} strokeWidth={4} /> : <Activity size={18} />}
             </div>
             {isExpanded && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); onChange({ isSettingsOpen: !block.isSettingsOpen }); }}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 ${block.isSettingsOpen ? 'bg-[#32D74B] text-black shadow-md' : 'bg-[#32D74B]/10 text-[#32D74B]'}`}
-              >
-                <Settings2 size={18} />
-              </button>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onChange({ isSettingsOpen: !block.isSettingsOpen }); }}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 ${block.isSettingsOpen ? 'bg-[#32D74B] text-black shadow-md' : 'bg-[#32D74B]/10 text-[#32D74B]'}`}
+                >
+                  <Settings2 size={18} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setNameEditTrigger(v => v + 1); }}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 bg-white/5 text-white border border-white/10"
+                  title="Редактировать название"
+                >
+                  <Pencil size={16} />
+                </button>
+              </div>
             )}
           </div>
           
@@ -872,9 +889,11 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
                <SmartInput 
                  value={block.name} 
                  defaultValue="Новое упражнение"
-                 onClick={(e) => e.stopPropagation()} 
-                 onChange={(e) => onChange({ name: e.target.value })} 
-                 className="font-black text-white outline-none flex-1 min-w-0 bg-transparent truncate text-xl uppercase italic tracking-tighter" 
+                 onClick={(e) => e.stopPropagation()}
+                 onChange={(e) => onChange({ name: e.target.value })}
+                 allowInlineEdit={false}
+                 editTrigger={nameEditTrigger}
+                 className="font-black text-white outline-none flex-1 min-w-0 bg-transparent truncate text-xl uppercase italic tracking-tighter"
                  placeholder="Exercise Name"
                />
              </div>
@@ -953,6 +972,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
 }
 
 function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable }) {
+  const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const isBlockDone = block.completedRounds?.length === block.rounds;
   const activeRoundIdx = Array.from({ length: block.rounds }).findIndex((_, i) => !(block.completedRounds || []).includes(i));
 
@@ -1041,12 +1061,21 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
               <Repeat size={18} />
             </div>
             {isExpanded && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); onChange({ isSettingsOpen: !block.isSettingsOpen }); }}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 ${block.isSettingsOpen ? 'bg-[#32D74B] text-black shadow-md' : 'bg-[#32D74B]/10 text-[#32D74B]'}`}
-              >
-                <Settings2 size={18} />
-              </button>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onChange({ isSettingsOpen: !block.isSettingsOpen }); }}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 ${block.isSettingsOpen ? 'bg-[#32D74B] text-black shadow-md' : 'bg-[#32D74B]/10 text-[#32D74B]'}`}
+                >
+                  <Settings2 size={18} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setNameEditTrigger(v => v + 1); }}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 bg-white/5 text-white border border-white/10"
+                  title="Редактировать название"
+                >
+                  <Pencil size={16} />
+                </button>
+              </div>
             )}
           </div>
 
@@ -1055,10 +1084,12 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                <SmartInput 
                  value={block.name} 
                  defaultValue="Новый суперсет"
-                 onClick={(e) => e.stopPropagation()} 
-                 onChange={(e) => onChange({ name: e.target.value })} 
-                 className="font-black text-white outline-none flex-1 min-w-0 bg-transparent truncate text-xl uppercase italic tracking-tighter" 
-                 placeholder="Superset Name" 
+                 onClick={(e) => e.stopPropagation()}
+                 onChange={(e) => onChange({ name: e.target.value })}
+                 allowInlineEdit={false}
+                 editTrigger={nameEditTrigger}
+                 className="font-black text-white outline-none flex-1 min-w-0 bg-transparent truncate text-xl uppercase italic tracking-tighter"
+                 placeholder="Superset Name"
                />
              </div>
           </div>
