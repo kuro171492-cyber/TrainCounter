@@ -441,27 +441,6 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
-  const resetCompletedInDay = (dayId) => {
-    if (!dayId) return;
-    setSchedule(prev => prev.map(day => {
-      if (day.id !== dayId) return day;
-      return {
-        ...day,
-        blocks: (day.blocks || []).map(block => ({
-          ...block,
-          setsData: (block.setsData || []).map(set => ({ ...set, completed: false })),
-          completedRounds: []
-        }))
-      };
-    }));
-  };
-
-  const stopActiveSession = () => {
-    const stoppedDayId = activeSession.dayId;
-    setActiveSession({ dayId: null, elapsed: 0, startTime: null });
-    resetCompletedInDay(stoppedDayId);
-  };
-
   return (
     <div className="min-h-screen bg-black text-white font-sans pb-24 overflow-x-hidden">
       {/* Header */}
