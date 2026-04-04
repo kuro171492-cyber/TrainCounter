@@ -441,6 +441,34 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
+  const stopSessionAndResetProgress = () => {
+    if (!activeSession.dayId) {
+      setActiveSession({ dayId: null, elapsed: 0, startTime: null });
+      return;
+    }
+
+    setSchedule(prev => prev.map(day => {
+      if (day.id !== activeSession.dayId) return day;
+      return {
+        ...day,
+        blocks: (day.blocks || []).map(block => {
+          if (block.type === 'exercise') {
+            return {
+              ...block,
+              setsData: (block.setsData || []).map(set => ({ ...set, completed: false }))
+            };
+          }
+          if (block.type === 'superset') {
+            return { ...block, completedRounds: [] };
+          }
+          return block;
+        })
+      };
+    }));
+
+    setActiveSession({ dayId: null, elapsed: 0, startTime: null });
+  };
+
   return (
     <div className="min-h-screen bg-black text-white font-sans pb-24 overflow-x-hidden">
       {/* Header */}
@@ -494,11 +522,11 @@ function App() {
           <DayContainer 
             day={activeDayData} 
             timerRef={mainTimerRef}
-            isSessionActive={activeSession.dayId === activeDayData.id} 
+            isSessionActive={activeSession.dayId === activeDayData.id}
             sessionElapsed={activeSession.elapsed}
             sessionStartTime={activeSession.startTime}
             onStart={() => setActiveSession({ dayId: activeDayData.id, elapsed: 0, startTime: Date.now() })}
-            onStop={() => setActiveSession({ dayId: null, elapsed: 0, startTime: null })}
+            onStop={stopSessionAndResetProgress}
             onRemove={() => {
               const newSchedule = schedule.filter(d => d.id !== activeDayData.id);
               setSchedule(newSchedule);
@@ -529,8 +557,8 @@ function App() {
                 <span className="text-[10px] text-[#48484A] font-black italic">started {formatWallTime(activeSession.startTime)}</span>
               </div>
             </div>
-            <button 
-              onClick={() => setActiveSession({ dayId: null, elapsed: 0, startTime: null })} 
+            <button
+              onClick={stopSessionAndResetProgress}
               className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center text-white active:scale-95 shadow-lg shadow-red-900/40"
             >
               <Square className="w-5 h-5 fill-white" />
