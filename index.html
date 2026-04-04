@@ -797,10 +797,18 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
 
 function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
+  const [focusedSetIdx, setFocusedSetIdx] = useState(0);
   if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} />;
 
   const isAllDone = block.setsData?.every(s => s.completed) && block.setsData?.length > 0;
   const activeSetIdx = (block.setsData || []).findIndex(s => !s.completed);
+  const safeFocusedSetIdx = Math.min(Math.max(focusedSetIdx, 0), Math.max((block.setsData || []).length - 1, 0));
+  const focusedSet = block.setsData?.[safeFocusedSetIdx];
+
+  useEffect(() => {
+    if (!isSessionActive) return;
+    if (activeSetIdx >= 0) setFocusedSetIdx(activeSetIdx);
+  }, [activeSetIdx, isSessionActive]);
 
   const toggleSetComplete = (sIdx) => {
     if (!isSessionActive || (sIdx !== activeSetIdx && !block.setsData[sIdx].completed)) return;
@@ -921,50 +929,108 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
             </div>
           )}
 
-          <div className="overflow-x-auto no-scrollbar -mx-3 px-3">
-             <div className="flex gap-4 min-w-max pb-2">
+          {!isSessionActive ? (
+            <div className="overflow-x-auto no-scrollbar -mx-3 px-3">
+               <div className="flex gap-4 min-w-max pb-2">
+                  {block.setsData.map((set, sIdx) => {
+                    const isHighlighted = activeSetIdx === sIdx;
+                    const isDone = set.completed;
+                    const isFuture = sIdx > activeSetIdx && activeSetIdx !== -1;
+                    const isTime = block.mode === 'time';
+                    return (
+                      <div key={set.id} className={`flex flex-col gap-2.5 min-w-[110px]`}>
+                         <span className={`text-[9px] font-black uppercase text-center italic tracking-widest transition-colors ${!isSessionActive ? 'text-[#48484A]' : (isDone ? 'text-[#32D74B]' : (isHighlighted ? 'text-red-500' : 'text-[#48484A]'))}`}>Set {sIdx + 1}</span>
+                         <div className="flex items-center gap-1.5 h-12">
+                            {sIdx === 0 && (
+                              <button onClick={toggleMode} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${isTime ? 'bg-orange-500 text-black shadow-md' : 'bg-white/5 text-orange-500 border border-white/5'}`}>
+                                {isTime ? <Timer size={18} /> : <Hash size={18} />}
+                              </button>
+                            )}
+                            <SwipeableCell isSessionActive={isSessionActive} canSwipe={isTime} isDone={isDone} onSwipeRight={() => triggerTimer(set.value, 'work', block.name, () => toggleSetComplete(sIdx), block.prepTime)} isHighlighted={isHighlighted}>
+                              <div onClick={() => !isDone && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, set.value, (v, weight) => {
+                                const next = [...block.setsData]; next[sIdx] = {...next[sIdx], value: v, weight: weight}; onChange({setsData: next});
+                              }, true, set.weight)} className={`h-full flex flex-col items-center justify-center cursor-pointer transition-colors ${isDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
+                                 <span className={`font-black text-base tabular-nums italic transition-colors ${isDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{set.value}{isTime && !set.value.toString().includes('s') ? 's' : ''}</span>
+                                 {parseFloat(set.weight) > 0 && <span className={`text-[7px] font-black mt-0.5 italic text-red-500 uppercase transition-opacity ${isSessionActive && !isHighlighted && !isDone ? 'opacity-30' : 'opacity-100'}`}>{set.weight} kg</span>}
+                              </div>
+                            </SwipeableCell>
+                         </div>
+                         <button 
+                           disabled={!isSessionActive || (isFuture && !isDone)}
+                           onClick={() => toggleSetComplete(sIdx)} 
+                           className={`w-full h-10 rounded-[16px] flex items-center justify-center transition-all relative
+                             ${isDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' : 
+                               (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset shadow-[0_0_10px_rgba(255,59,48,0.2)] opacity-100 active:scale-95' : 
+                               'bg-black/40 border border-white/10 text-white/20'}
+                             ${(!isSessionActive || (isFuture && !isDone)) ? 'cursor-not-allowed' : ''}`}
+                         >
+                           {isDone ? <Check size={24} className="stroke-[4px]" /> : 
+                            (!isSessionActive) ? <Lock size={14} className="opacity-40" /> :
+                            (isFuture) ? <Lock size={14} className="opacity-20" /> :
+                            <Check size={24} className={isHighlighted ? 'opacity-100' : 'opacity-20'} />}
+                         </button>
+                      </div>
+                    );
+                  })}
+               </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
                 {block.setsData.map((set, sIdx) => {
-                  const isHighlighted = activeSetIdx === sIdx;
                   const isDone = set.completed;
-                  const isFuture = sIdx > activeSetIdx && activeSetIdx !== -1;
-                  const isTime = block.mode === 'time';
+                  const isActiveTab = sIdx === safeFocusedSetIdx;
                   return (
-                    <div key={set.id} className={`flex flex-col gap-2.5 min-w-[110px]`}>
-                       <span className={`text-[9px] font-black uppercase text-center italic tracking-widest transition-colors ${!isSessionActive ? 'text-[#48484A]' : (isDone ? 'text-[#32D74B]' : (isHighlighted ? 'text-red-500' : 'text-[#48484A]'))}`}>Set {sIdx + 1}</span>
-                       <div className="flex items-center gap-1.5 h-12">
-                          {sIdx === 0 && (
-                            <button onClick={toggleMode} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${isTime ? 'bg-orange-500 text-black shadow-md' : 'bg-white/5 text-orange-500 border border-white/5'}`}>
-                              {isTime ? <Timer size={18} /> : <Hash size={18} />}
-                            </button>
-                          )}
-                          <SwipeableCell isSessionActive={isSessionActive} canSwipe={isTime} isDone={isDone} onSwipeRight={() => triggerTimer(set.value, 'work', block.name, () => toggleSetComplete(sIdx), block.prepTime)} isHighlighted={isHighlighted}>
-                            <div onClick={() => !isDone && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, set.value, (v, weight) => {
-                              const next = [...block.setsData]; next[sIdx] = {...next[sIdx], value: v, weight: weight}; onChange({setsData: next});
-                            }, true, set.weight)} className={`h-full flex flex-col items-center justify-center cursor-pointer transition-colors ${isDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
-                               <span className={`font-black text-base tabular-nums italic transition-colors ${isDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{set.value}{isTime && !set.value.toString().includes('s') ? 's' : ''}</span>
-                               {parseFloat(set.weight) > 0 && <span className={`text-[7px] font-black mt-0.5 italic text-red-500 uppercase transition-opacity ${isSessionActive && !isHighlighted && !isDone ? 'opacity-30' : 'opacity-100'}`}>{set.weight} kg</span>}
-                            </div>
-                          </SwipeableCell>
-                       </div>
-                       <button 
-                         disabled={!isSessionActive || (isFuture && !isDone)}
-                         onClick={() => toggleSetComplete(sIdx)} 
-                         className={`w-full h-10 rounded-[16px] flex items-center justify-center transition-all relative
-                           ${isDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' : 
-                             (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset shadow-[0_0_10px_rgba(255,59,48,0.2)] opacity-100 active:scale-95' : 
-                             'bg-black/40 border border-white/10 text-white/20'}
-                           ${(!isSessionActive || (isFuture && !isDone)) ? 'cursor-not-allowed' : ''}`}
-                       >
-                         {isDone ? <Check size={24} className="stroke-[4px]" /> : 
-                          (!isSessionActive) ? <Lock size={14} className="opacity-40" /> :
-                          (isFuture) ? <Lock size={14} className="opacity-20" /> :
-                          <Check size={24} className={isHighlighted ? 'opacity-100' : 'opacity-20'} />}
-                       </button>
-                    </div>
+                    <button
+                      key={set.id}
+                      onClick={() => setFocusedSetIdx(sIdx)}
+                      className={`min-w-[82px] h-8 px-2 rounded-t-xl border-t-2 border-x-2 font-black text-[11px] uppercase italic tracking-wide transition-all ${isDone ? 'border-[#32D74B] text-[#32D74B] bg-[#32D74B]/10' : isActiveTab ? 'border-red-500 text-red-500 bg-red-500/10' : 'border-white/15 text-[#8E8E93] bg-black/25'}`}
+                    >
+                      Set {sIdx + 1}
+                    </button>
                   );
                 })}
-             </div>
-          </div>
+              </div>
+
+              {focusedSet && (
+                <div className="rounded-[24px] border-2 border-red-500 bg-[#1F1F21] p-4 min-h-[48vh] flex flex-col">
+                  <div className="flex items-center gap-2 mb-4">
+                    <button onClick={toggleMode} className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all shrink-0 ${block.mode === 'time' ? 'bg-orange-500 text-black shadow-md' : 'bg-white/5 text-orange-500 border border-white/5'}`}>
+                      {block.mode === 'time' ? <Timer size={18} /> : <Hash size={18} />}
+                    </button>
+                    <div className="text-[10px] font-black uppercase italic tracking-[0.16em] text-[#8E8E93]">Текущий подход</div>
+                  </div>
+                  <div className="flex-1 min-h-[220px]">
+                    <SwipeableCell
+                      isSessionActive={isSessionActive}
+                      canSwipe={block.mode === 'time' && safeFocusedSetIdx === activeSetIdx}
+                      isDone={focusedSet.completed}
+                      isHighlighted={safeFocusedSetIdx === activeSetIdx}
+                      onSwipeRight={() => triggerTimer(focusedSet.value, 'work', block.name, () => toggleSetComplete(safeFocusedSetIdx), block.prepTime)}
+                    >
+                      <button
+                        onClick={() => !focusedSet.completed && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, focusedSet.value, (v, weight) => {
+                          const next = [...block.setsData];
+                          next[safeFocusedSetIdx] = { ...next[safeFocusedSetIdx], value: v, weight: weight };
+                          onChange({ setsData: next });
+                        }, true, focusedSet.weight)}
+                        className={`w-full h-full rounded-2xl border flex flex-col items-center justify-center ${focusedSet.completed ? 'border-[#32D74B]/30 bg-[#32D74B]/10' : 'border-white/10 bg-black/30'}`}
+                      >
+                        <span className={`font-black text-6xl tabular-nums italic ${focusedSet.completed ? 'text-[#32D74B]' : 'text-white'}`}>{focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}</span>
+                        {parseFloat(focusedSet.weight) > 0 && <span className="text-sm font-black mt-2 italic uppercase text-red-500">{focusedSet.weight} kg</span>}
+                      </button>
+                    </SwipeableCell>
+                  </div>
+                  <button
+                    onClick={() => toggleSetComplete(safeFocusedSetIdx)}
+                    className={`mt-4 w-full h-14 rounded-2xl flex items-center justify-center ${focusedSet.completed ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset' : 'bg-black/60 text-red-500 ring-2 ring-red-500 ring-inset active:scale-95'}`}
+                  >
+                    <Check size={28} className={focusedSet.completed ? "stroke-[4px]" : ""} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
