@@ -866,7 +866,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
               {isAllDone ? <Check size={18} strokeWidth={4} /> : <Activity size={18} />}
             </div>
             {isExpanded && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 <button
                   onClick={(e) => { e.stopPropagation(); onChange({ isSettingsOpen: !block.isSettingsOpen }); }}
                   className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 ${block.isSettingsOpen ? 'bg-[#32D74B] text-black shadow-md' : 'bg-[#32D74B]/10 text-[#32D74B]'}`}
@@ -1061,7 +1061,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
               <Repeat size={18} />
             </div>
             {isExpanded && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 <button
                   onClick={(e) => { e.stopPropagation(); onChange({ isSettingsOpen: !block.isSettingsOpen }); }}
                   className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 ${block.isSettingsOpen ? 'bg-[#32D74B] text-black shadow-md' : 'bg-[#32D74B]/10 text-[#32D74B]'}`}
