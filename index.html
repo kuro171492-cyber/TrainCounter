@@ -1000,27 +1000,17 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
                     </button>
                     <div className="text-[10px] font-black uppercase italic tracking-[0.16em] text-[#8E8E93]">Текущий подход</div>
                   </div>
-                  <div className="flex-1 min-h-[220px]">
-                    <SwipeableCell
-                      isSessionActive={isSessionActive}
-                      canSwipe={block.mode === 'time' && safeFocusedSetIdx === activeSetIdx}
-                      isDone={focusedSet.completed}
-                      isHighlighted={safeFocusedSetIdx === activeSetIdx}
-                      onSwipeRight={() => triggerTimer(focusedSet.value, 'work', block.name, () => toggleSetComplete(safeFocusedSetIdx), block.prepTime)}
-                    >
-                      <button
-                        onClick={() => !focusedSet.completed && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, focusedSet.value, (v, weight) => {
-                          const next = [...block.setsData];
-                          next[safeFocusedSetIdx] = { ...next[safeFocusedSetIdx], value: v, weight: weight };
-                          onChange({ setsData: next });
-                        }, true, focusedSet.weight)}
-                        className={`w-full h-full rounded-2xl border flex flex-col items-center justify-center ${focusedSet.completed ? 'border-[#32D74B]/30 bg-[#32D74B]/10' : 'border-white/10 bg-black/30'}`}
-                      >
-                        <span className={`font-black text-6xl tabular-nums italic ${focusedSet.completed ? 'text-[#32D74B]' : 'text-white'}`}>{focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}</span>
-                        {parseFloat(focusedSet.weight) > 0 && <span className="text-sm font-black mt-2 italic uppercase text-red-500">{focusedSet.weight} kg</span>}
-                      </button>
-                    </SwipeableCell>
-                  </div>
+                  <button
+                    onClick={() => !focusedSet.completed && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, focusedSet.value, (v, weight) => {
+                      const next = [...block.setsData];
+                      next[safeFocusedSetIdx] = { ...next[safeFocusedSetIdx], value: v, weight: weight };
+                      onChange({ setsData: next });
+                    }, true, focusedSet.weight)}
+                    className={`flex-1 rounded-2xl border flex flex-col items-center justify-center ${focusedSet.completed ? 'border-[#32D74B]/30 bg-[#32D74B]/10' : 'border-white/10 bg-black/30'}`}
+                  >
+                    <span className={`font-black text-6xl tabular-nums italic ${focusedSet.completed ? 'text-[#32D74B]' : 'text-white'}`}>{focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}</span>
+                    {parseFloat(focusedSet.weight) > 0 && <span className="text-sm font-black mt-2 italic uppercase text-red-500">{focusedSet.weight} kg</span>}
+                  </button>
                   <button
                     onClick={() => toggleSetComplete(safeFocusedSetIdx)}
                     className={`mt-4 w-full h-14 rounded-2xl flex items-center justify-center ${focusedSet.completed ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset' : 'bg-black/60 text-red-500 ring-2 ring-red-500 ring-inset active:scale-95'}`}
