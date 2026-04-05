@@ -826,6 +826,21 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
     }
   };
 
+  const handleFocusedSetAction = () => {
+    if (!focusedSet) return;
+    if (block.mode === 'time' && !focusedSet.completed) {
+      triggerTimer(
+        focusedSet.value,
+        'work',
+        block.name,
+        () => toggleSetComplete(safeFocusedSetIdx),
+        block.prepTime
+      );
+      return;
+    }
+    toggleSetComplete(safeFocusedSetIdx);
+  };
+
   const adjustSetsCount = (delta) => {
     const nextCount = Math.max(1, (block.setsData || []).length + delta);
     if (nextCount === block.setsData.length) return;
@@ -1012,7 +1027,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
                     {parseFloat(focusedSet.weight) > 0 && <span className="text-sm font-black mt-2 italic uppercase text-red-500">{focusedSet.weight} kg</span>}
                   </button>
                   <button
-                    onClick={() => toggleSetComplete(safeFocusedSetIdx)}
+                    onClick={handleFocusedSetAction}
                     className={`mt-4 w-full h-14 rounded-2xl flex items-center justify-center ${focusedSet.completed ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset' : 'bg-black/60 text-red-500 ring-2 ring-red-500 ring-inset active:scale-95'}`}
                   >
                     <Check size={28} className={focusedSet.completed ? "stroke-[4px]" : ""} />
