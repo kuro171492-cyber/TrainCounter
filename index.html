@@ -834,7 +834,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
     lastAutoFocusStartRef.current = sessionStartTime;
   }, [sessionStartTime, isSessionActive, isExpanded, shouldAutoFocusOnStart, activeSetIdx]);
 
-  const toggleSetComplete = (sIdx, returnToFocusAfterRest = false) => {
+  const toggleSetComplete = (sIdx) => {
     if (!isSessionActive || (sIdx !== activeSetIdx && !block.setsData[sIdx].completed)) return;
     const set = block.setsData[sIdx];
     const nextSets = [...block.setsData];
