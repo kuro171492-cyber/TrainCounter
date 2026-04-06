@@ -823,10 +823,6 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   }, [activeSetIdx, isSessionActive]);
 
   useEffect(() => {
-    if (!isSessionActive || !isExpanded) setIsFocusFullscreen(false);
-  }, [isSessionActive, isExpanded]);
-
-  useEffect(() => {
     if (!sessionStartTime || !isSessionActive || !isExpanded || !shouldAutoFocusOnStart) return;
     if (lastAutoFocusStartRef.current === sessionStartTime) return;
     setFocusedSetIdx(activeSetIdx >= 0 ? activeSetIdx : 0);
@@ -859,7 +855,6 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   const handleFocusedSetAction = () => {
     if (!focusedSet) return;
     if (block.mode === 'time' && !focusedSet.completed) {
-      if (isFocusFullscreen) setIsFocusFullscreen(false);
       triggerTimer(
         focusedSet.value,
         'work',
@@ -869,7 +864,6 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
       );
       return;
     }
-    if (isFocusFullscreen && !focusedSet.completed) setIsFocusFullscreen(false);
     toggleSetComplete(safeFocusedSetIdx, isFocusFullscreen);
   };
 
