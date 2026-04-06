@@ -914,6 +914,18 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
     toggleSetComplete(safeFocusedSetIdx, { onRestComplete: goToNextSetOrExercise });
   };
 
+  const adjustFocusedSetValue = (delta) => {
+    if (!focusedSet) return;
+    const currentRaw = focusedSet.value?.toString() || '0';
+    const numericPart = parseInt(currentRaw.replace(/[^\d]/g, ''), 10);
+    const baseValue = Number.isNaN(numericPart) ? 0 : numericPart;
+    const nextNumeric = Math.max(1, baseValue + delta);
+    const nextValue = block.mode === 'time' ? `${nextNumeric}s` : `${nextNumeric}`;
+    const nextSets = [...block.setsData];
+    nextSets[safeFocusedSetIdx] = { ...nextSets[safeFocusedSetIdx], value: nextValue };
+    onChange({ setsData: nextSets });
+  };
+
   const adjustSetsCount = (delta) => {
     const nextCount = Math.max(1, (block.setsData || []).length + delta);
     if (nextCount === block.setsData.length) return;
@@ -956,6 +968,23 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
 
         <div className="text-9xl font-black tabular-nums tracking-tighter leading-none italic mb-16">
           {focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}
+        </div>
+
+        <div className="flex items-center gap-4 mb-10">
+          <button
+            onClick={() => adjustFocusedSetValue(-1)}
+            className="w-14 h-14 rounded-full bg-black/25 border border-white/10 flex items-center justify-center active:scale-95"
+            title={block.mode === 'time' ? 'Уменьшить время' : 'Уменьшить повторы'}
+          >
+            <Minus size={24} />
+          </button>
+          <button
+            onClick={() => adjustFocusedSetValue(1)}
+            className="w-14 h-14 rounded-full bg-black/25 border border-white/10 flex items-center justify-center active:scale-95"
+            title={block.mode === 'time' ? 'Увеличить время' : 'Увеличить повторы'}
+          >
+            <Plus size={24} />
+          </button>
         </div>
 
         <button
