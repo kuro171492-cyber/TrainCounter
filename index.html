@@ -834,6 +834,16 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
     lastAutoFocusStartRef.current = sessionStartTime;
   }, [sessionStartTime, isSessionActive, isExpanded, shouldAutoFocusOnStart, activeSetIdx]);
 
+  const goToNextSetOrExercise = () => {
+    const nextIncompleteIdx = (block.setsData || []).findIndex(s => !s.completed);
+    if (nextIncompleteIdx !== -1) {
+      setFocusedSetIdx(nextIncompleteIdx);
+      setIsFocusFullscreen(true);
+      return;
+    }
+    setIsFocusFullscreen(false);
+  };
+
   const toggleSetComplete = (sIdx) => {
     if (!isSessionActive || (sIdx !== activeSetIdx && !block.setsData[sIdx].completed)) return;
     const set = block.setsData[sIdx];
@@ -847,10 +857,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
       nextSets[sIdx].completed = true;
       onChange({ setsData: nextSets });
       if (block.restTime !== '0s') {
-        const nextIncompleteIdx = nextSets.findIndex(s => !s.completed);
-        const onRestComplete = returnToFocusAfterRest && nextIncompleteIdx !== -1
-          ? () => setIsFocusFullscreen(true)
-          : null;
+        const onRestComplete = () => goToNextSetOrExercise();
         triggerTimer(block.restTime || '60s', 'rest', '', onRestComplete);
       }
     }
