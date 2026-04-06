@@ -986,7 +986,24 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
 
         <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2 italic">ФОКУС</span>
         <div className="text-2xl font-black uppercase italic tracking-wide mb-2 text-center">{block.name}</div>
-        <div className="text-[12px] font-black uppercase italic tracking-[0.16em] text-white/80 mb-6">Подход {safeFocusedSetIdx + 1}</div>
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
+          {(block.setsData || []).map((_, setIdx) => {
+            const isActiveSet = setIdx === safeFocusedSetIdx;
+            return (
+              <button
+                key={`focus-set-${setIdx}`}
+                onClick={() => setFocusedSetIdx(setIdx)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-black uppercase italic tracking-[0.08em] transition-all active:scale-95 ${
+                  isActiveSet
+                    ? 'bg-white text-[#FF3B30]'
+                    : 'bg-black/25 border border-white/20 text-white/85'
+                }`}
+              >
+                {`set ${setIdx + 1}`}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="text-9xl font-black tabular-nums tracking-tighter leading-none italic mb-16">
           {focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}
