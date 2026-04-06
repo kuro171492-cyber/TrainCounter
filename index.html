@@ -546,6 +546,7 @@ function App() {
           <DayContainer 
             day={activeDayData} 
             timerRef={mainTimerRef}
+            isTimerActive={activeTimer.active}
             isSessionActive={activeSession.dayId === activeDayData.id}
             sessionElapsed={activeSession.elapsed}
             sessionStartTime={activeSession.startTime}
@@ -679,7 +680,7 @@ function App() {
   );
 }
 
-function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, triggerTimer, isSessionActive, sessionElapsed, sessionStartTime, onStart, onStop, onRemove }) {
+function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, sessionElapsed, sessionStartTime, onStart, onStop, onRemove }) {
   const [draggedId, setDraggedId] = useState(null);
   const [targetId, setTargetId] = useState(null);
   const firstExerciseId = day.blocks.find(block => block.type === 'exercise')?.id || null;
@@ -805,6 +806,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
               <BlockItem 
                 block={block} 
                 isExpanded={day.activeBlockId === block.id} 
+                isTimerActive={isTimerActive}
                 isSessionActive={isSessionActive}
                 shouldAutoFocusOnStart={block.id === firstExerciseId}
                 sessionStartTime={sessionStartTime}
@@ -830,7 +832,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
   );
 }
 
-function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null, goToNextExercise = () => {} }) {
+function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null, goToNextExercise = () => {} }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedSetIdx, setFocusedSetIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
@@ -855,6 +857,10 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   useEffect(() => {
     if (!isSessionActive || !isExpanded) setIsFocusFullscreen(false);
   }, [isSessionActive, isExpanded]);
+
+  useEffect(() => {
+    if (isTimerActive) setIsFocusFullscreen(false);
+  }, [isTimerActive]);
 
   useEffect(() => {
     if (!sessionStartTime || !isSessionActive || !isExpanded || !shouldAutoFocusOnStart) return;
@@ -1105,8 +1111,9 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
               </div>
 
               <button
+                disabled={isTimerActive}
                 onClick={() => setIsFocusFullscreen(true)}
-                className="w-full h-11 rounded-xl bg-black/40 border border-white/10 text-red-500 flex items-center justify-center gap-2 active:scale-95"
+                className={`w-full h-11 rounded-xl border flex items-center justify-center gap-2 ${isTimerActive ? 'bg-black/20 border-white/5 text-white/30 cursor-not-allowed' : 'bg-black/40 border-white/10 text-red-500 active:scale-95'}`}
                 title="Развернуть на весь экран"
               >
                 <Layers size={18} />
