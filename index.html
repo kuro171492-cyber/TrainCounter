@@ -61,6 +61,7 @@ const QUICK_REPS = ['5', '8', '10', '12', '15', '20', 'MAX'];
 const QUICK_TIME = ['5s', '10s', '15s', '30s', '45s', '60s', '90s', '2m', '3m', '5m'];
 const QUICK_WEIGHTS = ['0', '2.5', '5', '10', '15', '20', '25', '50'];
 const PREP_OPTIONS = ['0s', '5s', '10s', '15s', '20s'];
+const DEFAULT_WORK_OVERTIME_ENABLED = false;
 
 const DEFAULT_VALUES = [
   'Сессия', 'Новое упражнение', 'Новый суперсет', 'Приседания', 'Отжимания', 'Новое упр'
@@ -250,7 +251,7 @@ function App() {
   const [confirmModal, setConfirmModal] = useState({ show: false, onConfirm: null, message: '', title: '' });
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [activeSession, setActiveSession] = useState({ dayId: null, elapsed: 0, startTime: null });
-  const [activeTimer, setActiveTimer] = useState({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, initialTime: 0 });
+  const [activeTimer, setActiveTimer] = useState({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 });
   
   const audioCtx = useRef(null);
   const mainTimerRef = useRef(null);
@@ -378,11 +379,20 @@ function App() {
             if (activeTimer.type === 'prep') {
               const { label, workTime, onComplete } = activeTimer.meta;
               playMetronome('start');
-              setActiveTimer({ active: true, timeLeft: parseToSeconds(workTime), type: 'work', label, onComplete, isOvertime: false, initialTime: parseToSeconds(workTime) });
+              setActiveTimer({
+                active: true,
+                timeLeft: parseToSeconds(workTime),
+                type: 'work',
+                label,
+                onComplete,
+                isOvertime: false,
+                allowOvertime: !!activeTimer.meta?.allowOvertime,
+                initialTime: parseToSeconds(workTime)
+              });
             } else {
               const cb = activeTimer.onComplete;
               playMetronome('restFinish');
-              setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, initialTime: 0 });
+              setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 });
               if (cb) cb();
             }
           }
@@ -395,8 +405,14 @@ function App() {
               else playMetronome('tick');
               setActiveTimer(prev => ({ ...prev, timeLeft: nextTime }));
             } else {
+              const cb = activeTimer.onComplete;
               playMetronome('finish');
-              setActiveTimer(prev => ({ ...prev, isOvertime: true, timeLeft: 1 }));
+              if (activeTimer.allowOvertime) {
+                setActiveTimer(prev => ({ ...prev, isOvertime: true, timeLeft: 1 }));
+              } else {
+                setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 });
+                if (cb) cb();
+              }
             }
           } else {
             setActiveTimer(prev => ({ ...prev, timeLeft: prev.timeLeft + 1 }));
@@ -411,10 +427,11 @@ function App() {
     if (!activeSession.dayId) return;
     const pSecs = parseToSeconds(prepTimeStr);
     const wSecs = parseToSeconds(timeStr);
+    const allowOvertime = type === 'work' ? DEFAULT_WORK_OVERTIME_ENABLED : false;
     if (type === 'work' && pSecs > 0) {
-      setActiveTimer({ active: true, timeLeft: pSecs, type: 'prep', label, onComplete: null, meta: { workTime: timeStr, label, onComplete }, initialTime: pSecs });
+      setActiveTimer({ active: true, timeLeft: pSecs, type: 'prep', label, onComplete: null, isOvertime: false, allowOvertime: false, meta: { workTime: timeStr, label, onComplete, allowOvertime }, initialTime: pSecs });
     } else {
-      setActiveTimer({ active: true, timeLeft: wSecs, type, label, onComplete, isOvertime: false, initialTime: wSecs });
+      setActiveTimer({ active: true, timeLeft: wSecs, type, label, onComplete, isOvertime: false, allowOvertime, initialTime: wSecs });
     }
   };
 
@@ -610,7 +627,7 @@ function App() {
           <h2 className="text-9xl font-black tabular-nums tracking-tighter leading-none mb-16">{activeTimer.isOvertime ? '+' : ''}{formatTime(activeTimer.timeLeft)}</h2>
           <div className="flex items-center gap-8">
             <button onClick={() => setActiveTimer(p => ({ ...p, timeLeft: p.initialTime, isOvertime: false }))} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20"><RotateCcw className="w-6 h-6" /></button>
-            <button onClick={() => { const {onComplete, type} = activeTimer; setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, initialTime: 0 }); if (type === 'work' && onComplete) onComplete(); }} className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl ${activeTimer.isOvertime ? 'bg-[#32D74B]' : 'bg-black/30'}`}>{activeTimer.isOvertime ? <Check className="w-10 h-10 text-black" /> : <Square className="w-8 h-8 fill-white" />}</button>
+            <button onClick={() => { const {onComplete, type} = activeTimer; setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 }); if (type === 'work' && onComplete) onComplete(); }} className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl ${activeTimer.isOvertime ? 'bg-[#32D74B]' : 'bg-black/30'}`}>{activeTimer.isOvertime ? <Check className="w-10 h-10 text-black" /> : <Square className="w-8 h-8 fill-white" />}</button>
             <button onClick={() => setActiveTimer({ ...activeTimer, active: false })} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20 text-white/50"><X className="w-6 h-6" /></button>
           </div>
         </div>
