@@ -872,47 +872,8 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
 
   const renderFocusedSetCard = (isFullscreen = false) => {
     if (!focusedSet) return null;
-    if (isFullscreen) {
-      return (
-        <div className={`h-full w-full flex flex-col items-center justify-center p-6 text-white transition-colors duration-300 ${focusedSet.completed ? 'bg-[#32D74B]' : 'bg-[#FF3B30]'}`}>
-          <div className="text-center mb-8">
-            <div className="text-[10px] font-black uppercase tracking-[0.28em] opacity-80 italic mb-3">Текущий подход</div>
-            <div className="text-2xl font-black uppercase italic tracking-wide">{block.name}</div>
-            <div className="text-sm font-black uppercase italic tracking-[0.22em] opacity-90 mt-1">Подход {safeFocusedSetIdx + 1}</div>
-          </div>
-          <button
-            onClick={() => !focusedSet.completed && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, focusedSet.value, (v, weight) => {
-              const next = [...block.setsData];
-              next[safeFocusedSetIdx] = { ...next[safeFocusedSetIdx], value: v, weight: weight };
-              onChange({ setsData: next });
-            }, true, focusedSet.weight)}
-            className="flex flex-col items-center justify-center mb-14 active:scale-[0.99] transition-transform"
-          >
-            <span className="font-black text-9xl tabular-nums italic leading-none">{focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}</span>
-            {parseFloat(focusedSet.weight) > 0 && <span className="text-xl font-black mt-4 italic uppercase opacity-90">{focusedSet.weight} kg</span>}
-          </button>
-          <div className="flex items-center gap-7">
-            <button onClick={toggleMode} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20 text-white/90 active:scale-95">
-              {block.mode === 'time' ? <Timer className="w-7 h-7" /> : <Hash className="w-7 h-7" />}
-            </button>
-            <button onClick={handleFocusedSetAction} className="w-24 h-24 rounded-full flex items-center justify-center bg-black/30 shadow-2xl shadow-black/25 active:scale-95">
-              <Check className={`w-10 h-10 ${focusedSet.completed ? 'stroke-[4px]' : ''}`} />
-            </button>
-            <button onClick={() => setIsFocusFullscreen(false)} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20 text-white/90 active:scale-95" title="Свернуть">
-              <X className="w-7 h-7" />
-            </button>
-          </div>
-          <button
-            onClick={() => setIsFocusFullscreen(false)}
-            className="mt-7 text-xs font-black uppercase italic tracking-[0.2em] text-white/85"
-          >
-            Свернуть
-          </button>
-        </div>
-      );
-    }
     return (
-      <div className="rounded-[24px] border-2 border-red-500 bg-[#1F1F21] p-4 flex flex-col min-h-[48vh]">
+      <div className={`rounded-[24px] border-2 border-red-500 bg-[#1F1F21] p-4 flex flex-col ${isFullscreen ? 'h-full min-h-0' : 'min-h-[48vh]'}`}>
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2 min-w-0">
             <button onClick={toggleMode} className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all shrink-0 ${block.mode === 'time' ? 'bg-orange-500 text-black shadow-md' : 'bg-white/5 text-orange-500 border border-white/5'}`}>
@@ -924,13 +885,22 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
               <div className="text-[11px] font-black uppercase italic tracking-[0.12em] text-red-500">Подход {safeFocusedSetIdx + 1}</div>
             </div>
           </div>
-          <button
-            onClick={() => setIsFocusFullscreen(true)}
-            className="w-11 h-11 rounded-xl bg-black/40 border border-white/10 text-red-500 flex items-center justify-center active:scale-95"
-            title="Развернуть на весь экран"
-          >
-            <Layers size={18} />
-          </button>
+          {isFullscreen ? (
+            <button
+              onClick={() => setIsFocusFullscreen(false)}
+              className="h-10 px-4 rounded-xl bg-black/40 border border-white/15 text-white text-[11px] font-black uppercase italic tracking-wide active:scale-95"
+            >
+              Свернуть
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsFocusFullscreen(true)}
+              className="w-11 h-11 rounded-xl bg-black/40 border border-white/10 text-red-500 flex items-center justify-center active:scale-95"
+              title="Развернуть на весь экран"
+            >
+              <Layers size={18} />
+            </button>
+          )}
         </div>
         <button
           onClick={() => !focusedSet.completed && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, focusedSet.value, (v, weight) => {
@@ -940,14 +910,14 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
           }, true, focusedSet.weight)}
           className={`flex-1 rounded-2xl border flex flex-col items-center justify-center ${focusedSet.completed ? 'border-[#32D74B]/30 bg-[#32D74B]/10' : 'border-white/10 bg-black/30'}`}
         >
-          <span className={`font-black tabular-nums italic text-6xl ${focusedSet.completed ? 'text-[#32D74B]' : 'text-white'}`}>{focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}</span>
-          {parseFloat(focusedSet.weight) > 0 && <span className="font-black mt-2 italic uppercase text-red-500 text-sm">{focusedSet.weight} kg</span>}
+          <span className={`font-black tabular-nums italic ${isFullscreen ? 'text-8xl' : 'text-6xl'} ${focusedSet.completed ? 'text-[#32D74B]' : 'text-white'}`}>{focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}</span>
+          {parseFloat(focusedSet.weight) > 0 && <span className={`font-black mt-2 italic uppercase text-red-500 ${isFullscreen ? 'text-lg' : 'text-sm'}`}>{focusedSet.weight} kg</span>}
         </button>
         <button
           onClick={handleFocusedSetAction}
-          className={`mt-4 w-full rounded-2xl flex items-center justify-center h-14 ${focusedSet.completed ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset' : 'bg-black/60 text-red-500 ring-2 ring-red-500 ring-inset active:scale-95'}`}
+          className={`mt-4 w-full rounded-2xl flex items-center justify-center ${isFullscreen ? 'h-16' : 'h-14'} ${focusedSet.completed ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset' : 'bg-black/60 text-red-500 ring-2 ring-red-500 ring-inset active:scale-95'}`}
         >
-          <Check size={28} className={focusedSet.completed ? "stroke-[4px]" : ""} />
+          <Check size={isFullscreen ? 32 : 28} className={focusedSet.completed ? "stroke-[4px]" : ""} />
         </button>
       </div>
     );
@@ -1097,7 +1067,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
 
               {renderFocusedSetCard(false)}
               {isFocusFullscreen && focusedSet && (
-                <div className="fixed inset-0 z-[220]">
+                <div className="fixed inset-0 z-[220] bg-black/95 p-4 pt-6 pb-6">
                   {renderFocusedSetCard(true)}
                 </div>
               )}
