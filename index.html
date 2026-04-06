@@ -532,7 +532,14 @@ function App() {
             isSessionActive={activeSession.dayId === activeDayData.id}
             sessionElapsed={activeSession.elapsed}
             sessionStartTime={activeSession.startTime}
-            onStart={() => setActiveSession({ dayId: activeDayData.id, elapsed: 0, startTime: Date.now() })}
+            onStart={(firstExerciseId) => {
+              setSchedule(prev => prev.map(d =>
+                d.id === activeDayData.id
+                  ? { ...d, isCollapsed: false, activeBlockId: firstExerciseId || d.activeBlockId }
+                  : d
+              ));
+              setActiveSession({ dayId: activeDayData.id, elapsed: 0, startTime: Date.now() });
+            }}
             onStop={stopSessionAndResetProgress}
             onRemove={() => {
               const newSchedule = schedule.filter(d => d.id !== activeDayData.id);
@@ -658,6 +665,7 @@ function App() {
 function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, triggerTimer, isSessionActive, sessionElapsed, sessionStartTime, onStart, onStop, onRemove }) {
   const [draggedId, setDraggedId] = useState(null);
   const [targetId, setTargetId] = useState(null);
+  const firstExerciseId = day.blocks.find(block => block.type === 'exercise')?.id || null;
 
   const addBlock = (type) => {
     const newId = generateId();
@@ -739,7 +747,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
         </div>
 
         {!isSessionActive ? (
-          <button onClick={onStart} className="h-12 bg-red-600 text-white rounded-2xl flex items-center justify-center gap-3 font-black text-xs uppercase italic active:scale-[0.98] transition-all shadow-xl shadow-red-900/40 tracking-widest">
+          <button onClick={() => onStart(firstExerciseId)} className="h-12 bg-red-600 text-white rounded-2xl flex items-center justify-center gap-3 font-black text-xs uppercase italic active:scale-[0.98] transition-all shadow-xl shadow-red-900/40 tracking-widest">
             <Play className="w-4 h-4 fill-white" /> СТАРТ
           </button>
         ) : (
@@ -774,6 +782,8 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
                 block={block} 
                 isExpanded={day.activeBlockId === block.id} 
                 isSessionActive={isSessionActive}
+                shouldAutoFocusOnStart={block.id === firstExerciseId}
+                sessionStartTime={sessionStartTime}
                 isDraggable={!isSessionActive}
                 onToggle={() => {
                   const nextActiveId = day.activeBlockId === block.id ? null : block.id;
@@ -795,10 +805,11 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
   );
 }
 
-function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable }) {
+function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedSetIdx, setFocusedSetIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
+  const lastAutoFocusStartRef = useRef(null);
   if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} />;
 
   const isAllDone = block.setsData?.every(s => s.completed) && block.setsData?.length > 0;
@@ -814,6 +825,14 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   useEffect(() => {
     if (!isSessionActive || !isExpanded) setIsFocusFullscreen(false);
   }, [isSessionActive, isExpanded]);
+
+  useEffect(() => {
+    if (!sessionStartTime || !isSessionActive || !isExpanded || !shouldAutoFocusOnStart) return;
+    if (lastAutoFocusStartRef.current === sessionStartTime) return;
+    setFocusedSetIdx(activeSetIdx >= 0 ? activeSetIdx : 0);
+    setIsFocusFullscreen(true);
+    lastAutoFocusStartRef.current = sessionStartTime;
+  }, [sessionStartTime, isSessionActive, isExpanded, shouldAutoFocusOnStart, activeSetIdx]);
 
   const toggleSetComplete = (sIdx) => {
     if (!isSessionActive || (sIdx !== activeSetIdx && !block.setsData[sIdx].completed)) return;
