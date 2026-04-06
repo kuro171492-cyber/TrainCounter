@@ -156,8 +156,8 @@ const SmartInput = ({ value, onChange, className, placeholder, defaultValue, all
 
   const handleFocus = (e) => {
     const val = e.target.value.trim();
-    const isDefault = DEFAULT_VALUES.some(def => 
-      val.toLowerCase() === def.toLowerCase() || 
+    const isDefault = DEFAULT_VALUES.some(def =>
+      val.toLowerCase() === def.toLowerCase() ||
       (val.startsWith(def) && !isNaN(val.replace(def, "").trim()))
     );
     if (isDefault) onChange({ target: { value: '' } });
@@ -184,7 +184,7 @@ const SmartInput = ({ value, onChange, className, placeholder, defaultValue, all
         onTouchCancel={handleTouchEnd}
         readOnly={!isEditing}
         className={`
-          ${className} w-full transition-all duration-200 
+          ${className} w-full transition-all duration-200
           ${isEditing ? 'bg-black/40 ring-1 ring-red-500 rounded px-1 text-red-400' : 'cursor-default pointer-events-auto'}
         `}
         placeholder={placeholder}
@@ -216,7 +216,7 @@ const SwipeableCell = ({ children, onSwipeRight, isDone, canSwipe, isHighlighted
 
   const getStyleClasses = () => {
     if (isDone) return 'ring-2 ring-[#32D74B] ring-inset opacity-60 scale-95';
-    if (!isSessionActive) return 'ring-1 ring-white/10 opacity-100 scale-100'; 
+    if (!isSessionActive) return 'ring-1 ring-white/10 opacity-100 scale-100';
     if (isHighlighted) return 'ring-2 ring-red-500 ring-inset opacity-100 scale-105 z-10 shadow-lg shadow-red-900/20';
     return 'opacity-30 scale-100 ring-1 ring-white/5 pointer-events-none';
   };
@@ -226,7 +226,7 @@ const SwipeableCell = ({ children, onSwipeRight, isDone, canSwipe, isHighlighted
       <div className="absolute inset-0 bg-red-600 flex items-center pl-4 transition-opacity duration-200" style={{ opacity: offsetX > 10 ? 1 : 0 }}>
         <Play className="w-4 h-4 text-white fill-white" />
       </div>
-      <div 
+      <div
         onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
         style={{ transform: `translateX(${offsetX}px)` }}
         className="relative z-10 h-full w-full transition-transform duration-200"
@@ -252,7 +252,7 @@ function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [activeSession, setActiveSession] = useState({ dayId: null, elapsed: 0, startTime: null });
   const [activeTimer, setActiveTimer] = useState({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 });
-  
+
   const audioCtx = useRef(null);
   const mainTimerRef = useRef(null);
 
@@ -442,7 +442,7 @@ function App() {
     if (!activeDayData) return;
     const isAnyExpanded = !!activeDayData.activeBlockId;
     const nextId = isAnyExpanded ? null : (activeDayData.blocks[0]?.id || null);
-    
+
     setSchedule(schedule.map(d =>
       d.id === activeDayData.id
         ? { ...d, activeBlockId: nextId }
@@ -517,19 +517,19 @@ function App() {
             </button>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           {DAYS_OF_WEEK.map(day => {
             const isActive = activeDayName === day;
             const sessionsCount = schedule.filter(d => d.dayName === day).length;
             const isCreated = sessionsCount > 0;
             return (
-              <button 
-                key={day} 
-                onClick={() => selectDay(day)} 
+              <button
+                key={day}
+                onClick={() => selectDay(day)}
                 className={`
                   flex-1 min-w-[42px] h-10 flex flex-col items-center justify-center rounded-lg font-black text-[10px] transition-all relative
-                  ${isActive ? 'bg-[#FF3B30] text-white shadow-xl scale-105 z-10' : 
+                  ${isActive ? 'bg-[#FF3B30] text-white shadow-xl scale-105 z-10' :
                     isCreated ? 'bg-[#3A3A3C] text-white border border-white/10' : 'bg-[#2C2C2E] text-[#48484A]'}
                 `}
               >
@@ -543,8 +543,8 @@ function App() {
 
       <div className="p-3 space-y-4">
         {activeDayData ? (
-          <DayContainer 
-            day={activeDayData} 
+          <DayContainer
+            day={activeDayData}
             timerRef={mainTimerRef}
             isTimerActive={activeTimer.active}
             isSessionActive={activeSession.dayId === activeDayData.id}
@@ -563,7 +563,7 @@ function App() {
               const newSchedule = schedule.filter(d => d.id !== activeDayData.id);
               setSchedule(newSchedule);
               setActiveSessionIdx(0);
-            }} 
+            }}
             onUpdate={(data) => setSchedule(schedule.map(d => d.id === activeDayData.id ? { ...d, ...data } : d))}
             openModal={(t, o, c, s, h, w) => setModal({ show: true, title: t, options: o, currentVal: c, onSelect: s, hasWeightTab: h, currentWeight: w, activeTab: 'value' })}
             openConfirm={(m, c, tit) => setConfirmModal({ show: true, message: m, onConfirm: c, title: tit || 'Подтверждение' })}
@@ -602,7 +602,7 @@ function App() {
       {/* Floating Action Buttons Area */}
       <div className={`fixed right-6 z-[160] flex flex-col gap-3 transition-all ${activeSession.dayId && isStickyVisible ? 'bottom-28' : 'bottom-6'}`}>
         {activeDayData && activeDayData.blocks.length > 0 && (
-          <button 
+          <button
             onClick={toggleAllBlocks}
             className="w-12 h-12 bg-[#2C2C2E] text-white rounded-full flex items-center justify-center shadow-2xl border border-white/10 active:scale-90 transition-all"
             title={activeDayData.activeBlockId ? "Свернуть все" : "Развернуть первое"}
@@ -610,10 +610,10 @@ function App() {
             {activeDayData.activeBlockId ? <ChevronUp className="w-5 h-5" /> : <Layers className="w-5 h-5" />}
           </button>
         )}
-        
+
         {showScrollTop && (
-          <button 
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
+          <button
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             className="w-12 h-12 bg-red-600 text-white rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all"
           >
             <ArrowUp className="w-5 h-5" />
@@ -644,7 +644,7 @@ function App() {
                {modal.hasWeightTab && <button onClick={() => setModal({...modal, activeTab: 'weight'})} className={`pb-1 border-b-2 font-black text-xl transition-all ${modal.activeTab === 'weight' ? 'border-red-500 text-white' : 'border-transparent text-[#48484A]'}`}>Вес (кг)</button>}
                <button onClick={() => setModal({ ...modal, show: false })} className="ml-auto p-1 text-[#48484A]"><X className="w-6 h-6" /></button>
             </div>
-            
+
             <div className="flex items-center justify-between mb-8 bg-black/40 p-6 rounded-2xl border border-white/5 shadow-inner">
                <button onClick={() => modal.activeTab === 'weight' ? setModal({...modal, currentWeight: adjustWeight(modal.currentWeight, -0.5)}) : setModal({...modal, currentVal: adjustValue(modal.currentVal, -1)})} className="w-14 h-14 bg-[#2C2C2E] rounded-full flex items-center justify-center active:scale-90"><Minus className="w-6 h-6 text-white" /></button>
                <div className="text-5xl font-black text-orange-500 tabular-nums italic">{modal.activeTab === 'weight' ? modal.currentWeight : modal.currentVal}</div>
@@ -697,7 +697,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
         { id: generateId(), value: '10', weight: '0', completed: false }
       ];
     } else {
-      newBlock.rounds = 3; 
+      newBlock.rounds = 3;
       const ex1Id = generateId();
       const ex2Id = generateId();
       newBlock.exercises = [{ id: ex1Id, name: 'Приседания', mode: 'reps' }, { id: ex2Id, name: 'Отжимания', mode: 'reps' }];
@@ -763,11 +763,11 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
               <span className="bg-[#FF3B30] text-white px-2 py-0.5 rounded-md font-black text-[8px] uppercase italic tracking-tighter">{day.dayName}</span>
               <span className="text-[8px] font-black uppercase tracking-widest text-[#48484A] italic">Workout Plan</span>
             </div>
-            <SmartInput 
-              value={day.title} 
+            <SmartInput
+              value={day.title}
               defaultValue={`Сессия`}
-              onChange={(e) => onUpdate({ title: e.target.value })} 
-              className="font-black text-2xl bg-transparent outline-none flex-1 truncate text-white uppercase italic tracking-tight" 
+              onChange={(e) => onUpdate({ title: e.target.value })}
+              className="font-black text-2xl bg-transparent outline-none flex-1 truncate text-white uppercase italic tracking-tight"
               placeholder="Session Name"
             />
           </div>
@@ -801,7 +801,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
       {!day.isCollapsed && (
         <div className="px-3 pb-5 space-y-3 bg-black/30">
           {day.blocks.map((block) => (
-            <div 
+            <div
               key={block.id}
               draggable={!isSessionActive}
               onDragStart={() => handleDragStart(block.id)}
@@ -809,9 +809,9 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
               onDragEnd={handleDragEnd}
               className={`transition-all duration-200 ${draggedId === block.id ? 'opacity-20 scale-95' : 'opacity-100'} ${targetId === block.id ? 'border-t-2 border-red-500 pt-2' : ''}`}
             >
-              <BlockItem 
-                block={block} 
-                isExpanded={day.activeBlockId === block.id} 
+              <BlockItem
+                block={block}
+                isExpanded={day.activeBlockId === block.id}
                 isTimerActive={isTimerActive}
                 isSessionActive={isSessionActive}
                 shouldAutoFocusOnStart={block.id === firstExerciseId}
@@ -823,8 +823,8 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
                   const nextActiveId = day.activeBlockId === block.id ? null : block.id;
                   onUpdate({ activeBlockId: nextActiveId });
                 }}
-                onRemove={() => onUpdate({ blocks: day.blocks.filter(b => b.id !== block.id) })} 
-                onChange={(data) => onUpdate({ blocks: day.blocks.map(b => b.id === block.id ? { ...b, ...data } : b) })} 
+                onRemove={() => onUpdate({ blocks: day.blocks.filter(b => b.id !== block.id) })}
+                onChange={(data) => onUpdate({ blocks: day.blocks.map(b => b.id === block.id ? { ...b, ...data } : b) })}
                 goToNextExercise={goToNextExercise}
                 openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer}
               />
@@ -845,7 +845,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   const [focusedSetIdx, setFocusedSetIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const lastAutoFocusStartRef = useRef(null);
-  if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} />;
+  if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} isTimerActive={isTimerActive} />;
 
   const isAllDone = block.setsData?.every(s => s.completed) && block.setsData?.length > 0;
   const activeSetIdx = (block.setsData || []).findIndex(s => !s.completed);
@@ -1038,10 +1038,10 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
 
   return (
     <div className={`rounded-[28px] transition-all duration-300 overflow-hidden relative ${isExpanded ? 'bg-[#3A3A3C] shadow-lg' : 'bg-[#2C2C2E] border border-white/5'} ${isSessionActive && !isExpanded && !isAllDone ? 'opacity-80' : 'opacity-100'}`}>
-      
+
       {!isSessionActive && (
-        <button 
-          onClick={(e) => { e.stopPropagation(); onRemove(); }} 
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
           className="absolute top-2 right-2 p-2.5 text-[#48484A] hover:text-red-500 active:scale-90 transition-all z-[20]"
         >
           <Trash2 size={20} />
@@ -1077,11 +1077,11 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
               </div>
             )}
           </div>
-          
+
           <div className="flex-1 min-0 flex flex-col h-10 justify-end">
              <div className="flex items-baseline overflow-hidden pb-0.5">
-               <SmartInput 
-                 value={block.name} 
+               <SmartInput
+                 value={block.name}
                  defaultValue="Новое упражнение"
                  onClick={(e) => e.stopPropagation()}
                  onChange={(e) => onChange({ name: e.target.value })}
@@ -1093,7 +1093,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
              </div>
           </div>
         </div>
-        <div className="w-6" /> 
+        <div className="w-6" />
       </div>
 
       {isExpanded && (
@@ -1141,16 +1141,16 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
                               </div>
                             </SwipeableCell>
                          </div>
-                         <button 
+                         <button
                            disabled={!isSessionActive || (isFuture && !isDone)}
-                           onClick={() => toggleSetComplete(sIdx, { onRestComplete: goToNextSetOrExercise })} 
+                           onClick={() => toggleSetComplete(sIdx, { onRestComplete: goToNextSetOrExercise })}
                            className={`w-full h-10 rounded-[16px] flex items-center justify-center transition-all relative
-                             ${isDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' : 
-                               (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset shadow-[0_0_10px_rgba(255,59,48,0.2)] opacity-100 active:scale-95' : 
+                             ${isDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' :
+                               (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset shadow-[0_0_10px_rgba(255,59,48,0.2)] opacity-100 active:scale-95' :
                                'bg-black/40 border border-white/10 text-white/20'}
                              ${(!isSessionActive || (isFuture && !isDone)) ? 'cursor-not-allowed' : ''}`}
                          >
-                           {isDone ? <Check size={24} className="stroke-[4px]" /> : 
+                           {isDone ? <Check size={24} className="stroke-[4px]" /> :
                             (!isSessionActive) ? <Lock size={14} className="opacity-40" /> :
                             (isFuture) ? <Lock size={14} className="opacity-20" /> :
                             <Check size={24} className={isHighlighted ? 'opacity-100' : 'opacity-20'} />}
@@ -1190,19 +1190,41 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   );
 }
 
-function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable }) {
+function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable, isTimerActive }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
+  const [focusedRoundIdx, setFocusedRoundIdx] = useState(0);
+  const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const isBlockDone = block.completedRounds?.length === block.rounds;
   const activeRoundIdx = Array.from({ length: block.rounds }).findIndex((_, i) => !(block.completedRounds || []).includes(i));
+  const safeFocusedRoundIdx = Math.min(Math.max(focusedRoundIdx, 0), Math.max(block.rounds - 1, 0));
+  const focusedRoundDone = (block.completedRounds || []).includes(safeFocusedRoundIdx);
+
+  useEffect(() => {
+    if (!isSessionActive) return;
+    if (activeRoundIdx >= 0) setFocusedRoundIdx(activeRoundIdx);
+  }, [activeRoundIdx, isSessionActive]);
+
+  useEffect(() => {
+    if (!isSessionActive || !isExpanded) return;
+    setFocusedRoundIdx(activeRoundIdx >= 0 ? activeRoundIdx : 0);
+  }, [isSessionActive, isExpanded, activeRoundIdx]);
+
+  useEffect(() => {
+    if (!isSessionActive || !isExpanded) setIsFocusFullscreen(false);
+  }, [isSessionActive, isExpanded]);
+
+  useEffect(() => {
+    if (isTimerActive) setIsFocusFullscreen(false);
+  }, [isTimerActive]);
 
   const toggleRoundComplete = (rIdx) => {
     if (!isSessionActive || (rIdx !== activeRoundIdx && !(block.completedRounds || []).includes(rIdx))) return;
     const isCompleted = (block.completedRounds || []).includes(rIdx);
-    if (isCompleted) { 
-      openConfirm('Сбросить круг?', () => onChange({ completedRounds: block.completedRounds.filter(r => r !== rIdx) }), 'Сброс'); 
-    } else { 
-      onChange({ completedRounds: [...(block.completedRounds || []), rIdx] }); 
-      if (block.restTime !== '0s') triggerTimer(block.restTime || '60s', 'rest'); 
+    if (isCompleted) {
+      openConfirm('Сбросить круг?', () => onChange({ completedRounds: block.completedRounds.filter(r => r !== rIdx) }), 'Сброс');
+    } else {
+      onChange({ completedRounds: [...(block.completedRounds || []), rIdx] });
+      if (block.restTime !== '0s') triggerTimer(block.restTime || '60s', 'rest');
     }
   };
 
@@ -1210,14 +1232,14 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     const nextCount = Math.max(1, block.rounds + delta);
     if (nextCount === block.rounds) return;
     let newValues = [...block.values];
-    if (delta > 0) { 
+    if (delta > 0) {
       for(let i = 0; i < delta; i++) {
         const roundMap = {};
         block.exercises.forEach(ex => roundMap[ex.id] = { value: '10', weight: '0' });
         newValues.push(roundMap);
-      } 
-    } else { 
-      newValues = newValues.slice(0, nextCount); 
+      }
+    } else {
+      newValues = newValues.slice(0, nextCount);
     }
     onChange({ rounds: nextCount, values: newValues, completedRounds: (block.completedRounds || []).filter(r => r < nextCount) });
   };
@@ -1225,12 +1247,12 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   const adjustExerciseCount = (delta) => {
     const nextCount = Math.max(1, block.exercises.length + delta);
     if (nextCount === block.exercises.length) return;
-    if (delta > 0) { 
+    if (delta > 0) {
       const newExId = generateId();
       const newExercises = [...block.exercises, { id: newExId, name: 'Отжимания', mode: 'reps' }];
       const newValues = block.values.map(v => ({ ...v, [newExId]: { value: '10', weight: '0' } }));
-      onChange({ exercises: newExercises, values: newValues }); 
-    } else { 
+      onChange({ exercises: newExercises, values: newValues });
+    } else {
       const lastExId = block.exercises[block.exercises.length - 1].id;
       const newExercises = block.exercises.slice(0, -1);
       const newValues = block.values.map(v => {
@@ -1238,7 +1260,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         delete nextV[lastExId];
         return nextV;
       });
-      onChange({ exercises: newExercises, values: newValues }); 
+      onChange({ exercises: newExercises, values: newValues });
     }
   };
 
@@ -1256,12 +1278,79 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     onChange({ exercises: nextExercises, values: nextValues });
   };
 
+  const renderFocusedRoundCard = () => {
+    const canEditRound = !focusedRoundDone;
+    return (
+      <div className="fixed inset-0 z-[220] bg-[#2A2424] text-white flex flex-col items-center justify-center p-6">
+        <button
+          onClick={() => setIsFocusFullscreen(false)}
+          className="absolute top-6 right-6 w-12 h-12 rounded-full bg-black/25 text-white/80 flex items-center justify-center active:scale-95"
+          title="Закрыть фокус"
+        >
+          <X size={22} />
+        </button>
+
+        <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2 italic">ФОКУС</span>
+        <div className="text-2xl font-black uppercase italic tracking-wide mb-2 text-center">{block.name}</div>
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
+          {Array.from({ length: block.rounds }).map((_, rIdx) => {
+            const isActiveRound = rIdx === safeFocusedRoundIdx;
+            return (
+              <button
+                key={`focus-round-${rIdx}`}
+                onClick={() => setFocusedRoundIdx(rIdx)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-black uppercase italic tracking-[0.08em] transition-all active:scale-95 ${
+                  isActiveRound ? 'bg-white text-[#2A2424]' : 'bg-black/25 border border-white/20 text-white/85'
+                }`}
+              >
+                {`round ${rIdx + 1}`}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="w-full max-w-sm space-y-3 mb-10">
+          {(block.exercises || []).map((ex) => {
+            const cellData = block.values[safeFocusedRoundIdx]?.[ex.id] || { value: '10', weight: '0' };
+            const val = cellData.value || '10';
+            const wt = cellData.weight || '0';
+            const isTime = ex.mode === 'time';
+            return (
+              <button
+                key={`focus-ex-${ex.id}`}
+                onClick={() => canEditRound && openModal(ex.name || 'Exercise', isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
+                  const nextValues = [...block.values];
+                  nextValues[safeFocusedRoundIdx] = { ...nextValues[safeFocusedRoundIdx], [ex.id]: { value: v, weight: weight } };
+                  onChange({ values: nextValues });
+                }, true, wt)}
+                className={`w-full rounded-2xl p-4 border transition-all text-left ${focusedRoundDone ? 'bg-[#32D74B]/10 border-[#32D74B]/30' : 'bg-black/25 border-white/10 active:scale-[0.99]'}`}
+              >
+                <div className="text-[10px] font-black uppercase italic tracking-widest text-[#8E8E93] mb-1 truncate">{ex.name}</div>
+                <div className="flex items-end gap-2">
+                  <span className={`font-black text-4xl tabular-nums italic ${focusedRoundDone ? 'text-[#32D74B]' : 'text-white'}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
+                  {parseFloat(wt) > 0 && <span className="text-[11px] font-black mb-1 italic uppercase text-red-500">{wt} kg</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => toggleRoundComplete(safeFocusedRoundIdx)}
+          className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-95 ${focusedRoundDone ? 'bg-[#32D74B]' : 'bg-black/35'}`}
+        >
+          <Check size={40} className={focusedRoundDone ? 'text-black stroke-[3px]' : 'text-white'} />
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className={`rounded-[28px] transition-all duration-300 overflow-hidden relative ${isExpanded ? 'bg-[#2A2424] shadow-lg' : 'bg-[#2C2C2E] border border-red-500/20'}`}>
-      
+
       {!isSessionActive && (
-        <button 
-          onClick={(e) => { e.stopPropagation(); onRemove(); }} 
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
           className="absolute top-2 right-2 p-2.5 text-[#48484A] hover:text-red-500 active:scale-90 transition-all z-[20]"
         >
           <Trash2 size={20} />
@@ -1300,8 +1389,8 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
 
           <div className="flex-1 min-0 flex flex-col h-10 justify-end">
              <div className="flex items-baseline overflow-hidden pb-0.5">
-               <SmartInput 
-                 value={block.name} 
+               <SmartInput
+                 value={block.name}
                  defaultValue="Новый суперсет"
                  onClick={(e) => e.stopPropagation()}
                  onChange={(e) => onChange({ name: e.target.value })}
@@ -1345,72 +1434,96 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
             </div>
           )}
 
-          <div className="overflow-x-auto no-scrollbar -mx-4 px-4 pt-1">
-            <div className="flex gap-4 min-w-max pb-2">
-              {Array.from({ length: block.rounds }).map((_, rIdx) => {
-                const isRoundDone = (block.completedRounds || []).includes(rIdx);
-                const isHighlighted = activeRoundIdx === rIdx;
-                const isFuture = rIdx > activeRoundIdx && activeRoundIdx !== -1;
-                return (
-                  <div key={rIdx} className={`flex flex-col gap-5 min-w-[130px]`}>
-                    <span className={`text-[10px] font-black uppercase text-center italic tracking-widest transition-colors ${!isSessionActive ? 'text-[#48484A]' : (isRoundDone ? 'text-[#32D74B]' : (isHighlighted ? 'text-red-500' : 'text-[#48484A]'))}`}>Round {rIdx + 1}</span>
-                    <div className="flex flex-col gap-4">
-                      {block.exercises?.map((ex) => {
-                        const cellData = block.values[rIdx]?.[ex.id] || { value: '10', weight: '0' };
-                        const val = cellData.value || '10';
-                        const wt = cellData.weight || '0';
-                        const isTime = ex.mode === 'time';
-                        return (
-                          <div key={ex.id} className="space-y-1.5">
-                            <SmartInput 
-                              value={ex.name} 
-                              defaultValue="Новое упр"
-                              onChange={(e) => onChange({ exercises: block.exercises.map(e_ => e_.id === ex.id ? { ...e_, name: e.target.value } : e_) })} 
-                              className={`text-[8px] font-black transition-colors truncate uppercase bg-transparent outline-none w-full italic focus:text-red-500 ${isSessionActive && isHighlighted ? 'text-[#8E8E93]' : (isSessionActive ? 'text-[#48484A]' : 'text-[#8E8E93]')}`} 
-                              placeholder="Exercise" 
-                            />
-                            <div className="flex items-center gap-1.5 h-12">
-                               {rIdx === 0 && (
-                                  <button onClick={() => toggleExerciseMode(ex.id)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${isTime ? 'bg-orange-500 text-black shadow-md' : 'bg-white/5 text-orange-500 border border-white/5'}`}>
-                                    {isTime ? <Timer size={18} /> : <Hash size={18} />}
-                                  </button>
-                               )}
-                                <SwipeableCell isSessionActive={isSessionActive} canSwipe={isTime} isDone={isRoundDone} onSwipeRight={() => triggerTimer(val, 'work', ex.name, null, block.prepTime)} isHighlighted={isHighlighted}>
-                                  <div onClick={() => !isRoundDone && openModal('Round '+(rIdx+1), isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
-                                    let nv = [...block.values]; 
-                                    nv[rIdx] = { ...nv[rIdx], [ex.id]: { value: v, weight: weight } }; 
-                                    onChange({ values: nv });
-                                  }, true, wt)} className={`h-full flex flex-col items-center justify-center transition-colors ${isRoundDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
-                                    <span className={`font-black text-base tabular-nums italic transition-colors ${isRoundDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
-                                    {parseFloat(wt) > 0 && <span className={`text-[7px] font-black mt-0.5 italic uppercase text-red-500 transition-opacity ${isSessionActive && !isHighlighted && !isRoundDone ? 'opacity-30' : 'opacity-100'}`}>{wt} kg</span>}
-                                  </div>
-                                </SwipeableCell>
+          {!isSessionActive ? (
+            <div className="overflow-x-auto no-scrollbar -mx-4 px-4 pt-1">
+              <div className="flex gap-4 min-w-max pb-2">
+                {Array.from({ length: block.rounds }).map((_, rIdx) => {
+                  const isRoundDone = (block.completedRounds || []).includes(rIdx);
+                  const isHighlighted = activeRoundIdx === rIdx;
+                  const isFuture = rIdx > activeRoundIdx && activeRoundIdx !== -1;
+                  return (
+                    <div key={rIdx} className={`flex flex-col gap-5 min-w-[130px]`}>
+                      <span className={`text-[10px] font-black uppercase text-center italic tracking-widest transition-colors ${!isSessionActive ? 'text-[#48484A]' : (isRoundDone ? 'text-[#32D74B]' : (isHighlighted ? 'text-red-500' : 'text-[#48484A]'))}`}>Round {rIdx + 1}</span>
+                      <div className="flex flex-col gap-4">
+                        {block.exercises?.map((ex) => {
+                          const cellData = block.values[rIdx]?.[ex.id] || { value: '10', weight: '0' };
+                          const val = cellData.value || '10';
+                          const wt = cellData.weight || '0';
+                          const isTime = ex.mode === 'time';
+                          return (
+                            <div key={ex.id} className="space-y-1.5">
+                              <SmartInput
+                                value={ex.name}
+                                defaultValue="Новое упр"
+                                onChange={(e) => onChange({ exercises: block.exercises.map(e_ => e_.id === ex.id ? { ...e_, name: e.target.value } : e_) })}
+                                className={`text-[8px] font-black transition-colors truncate uppercase bg-transparent outline-none w-full italic focus:text-red-500 ${isSessionActive && isHighlighted ? 'text-[#8E8E93]' : (isSessionActive ? 'text-[#48484A]' : 'text-[#8E8E93]')}`}
+                                placeholder="Exercise"
+                              />
+                              <div className="flex items-center gap-1.5 h-12">
+                                 {rIdx === 0 && (
+                                    <button onClick={() => toggleExerciseMode(ex.id)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${isTime ? 'bg-orange-500 text-black shadow-md' : 'bg-white/5 text-orange-500 border border-white/5'}`}>
+                                      {isTime ? <Timer size={18} /> : <Hash size={18} />}
+                                    </button>
+                                 )}
+                                  <SwipeableCell isSessionActive={isSessionActive} canSwipe={isTime} isDone={isRoundDone} onSwipeRight={() => triggerTimer(val, 'work', ex.name, null, block.prepTime)} isHighlighted={isHighlighted}>
+                                    <div onClick={() => !isRoundDone && openModal('Round '+(rIdx+1), isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
+                                      let nv = [...block.values];
+                                      nv[rIdx] = { ...nv[rIdx], [ex.id]: { value: v, weight: weight } };
+                                      onChange({ values: nv });
+                                    }, true, wt)} className={`h-full flex flex-col items-center justify-center transition-colors ${isRoundDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
+                                      <span className={`font-black text-base tabular-nums italic transition-colors ${isRoundDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
+                                      {parseFloat(wt) > 0 && <span className={`text-[7px] font-black mt-0.5 italic uppercase text-red-500 transition-opacity ${isSessionActive && !isHighlighted && !isRoundDone ? 'opacity-30' : 'opacity-100'}`}>{wt} kg</span>}
+                                    </div>
+                                  </SwipeableCell>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
+                      <div className="pt-2 mt-auto border-t border-white/10">
+                        <button
+                          disabled={!isSessionActive || (isFuture && !isRoundDone)}
+                          onClick={() => toggleRoundComplete(rIdx)}
+                          className={`w-full h-11 rounded-[16px] flex items-center justify-center transition-all relative
+                            ${isRoundDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' :
+                              (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset shadow-[0_0_15px_rgba(255,59,48,0.2)] opacity-100 active:scale-95' :
+                              'bg-black/40 border border-white/10 text-white/20'}
+                            ${(!isSessionActive || (isFuture && !isRoundDone)) ? 'cursor-not-allowed' : ''}`}
+                        >
+                           {isRoundDone ? <Check size={26} className="stroke-[4px]" /> :
+                            (!isSessionActive) ? <Lock size={16} className="opacity-40" /> :
+                            (isFuture) ? <Lock size={16} className="opacity-20" /> :
+                            <Check size={26} className={isHighlighted ? 'opacity-100' : 'opacity-20'} />}
+                        </button>
+                      </div>
                     </div>
-                    <div className="pt-2 mt-auto border-t border-white/10">
-                      <button 
-                        disabled={!isSessionActive || (isFuture && !isRoundDone)}
-                        onClick={() => toggleRoundComplete(rIdx)} 
-                        className={`w-full h-11 rounded-[16px] flex items-center justify-center transition-all relative
-                          ${isRoundDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' : 
-                            (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset shadow-[0_0_15px_rgba(255,59,48,0.2)] opacity-100 active:scale-95' : 
-                            'bg-black/40 border border-white/10 text-white/20'}
-                          ${(!isSessionActive || (isFuture && !isRoundDone)) ? 'cursor-not-allowed' : ''}`}
-                      >
-                         {isRoundDone ? <Check size={26} className="stroke-[4px]" /> : 
-                          (!isSessionActive) ? <Lock size={16} className="opacity-40" /> :
-                          (isFuture) ? <Lock size={16} className="opacity-20" /> :
-                          <Check size={26} className={isHighlighted ? 'opacity-100' : 'opacity-20'} />}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                {Array.from({ length: block.rounds }).map((_, rIdx) => {
+                  const isDone = (block.completedRounds || []).includes(rIdx);
+                  const isActiveTab = rIdx === safeFocusedRoundIdx;
+                  return (
+                    <button
+                      key={`superset-round-tab-${rIdx}`}
+                      onClick={() => {
+                        setFocusedRoundIdx(rIdx);
+                        if (!isTimerActive) setIsFocusFullscreen(true);
+                      }}
+                      className={`min-w-[92px] h-8 px-2 rounded-t-xl border-t-2 border-x-2 font-black text-[11px] uppercase italic tracking-wide transition-all ${isDone ? 'border-[#32D74B] text-[#32D74B] bg-[#32D74B]/10' : isActiveTab ? 'border-red-500 text-red-500 bg-red-500/10' : 'border-white/15 text-[#8E8E93] bg-black/25'}`}
+                    >
+                      Round {rIdx + 1}
+                    </button>
+                  );
+                })}
+              </div>
+              {isFocusFullscreen && renderFocusedRoundCard()}
+            </div>
+          )}
         </div>
       )}
     </div>
