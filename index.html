@@ -683,6 +683,7 @@ function App() {
 function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, sessionElapsed, sessionStartTime, onStart, onStop, onRemove }) {
   const [draggedId, setDraggedId] = useState(null);
   const [targetId, setTargetId] = useState(null);
+  const [pendingFocus, setPendingFocus] = useState(null);
   const firstExerciseId = day.blocks.find(block => block.type === 'exercise')?.id || null;
 
   const addBlock = (type) => {
@@ -741,11 +742,16 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
     setTargetId(null);
   };
 
-  const goToNextExercise = (currentBlockId) => {
+  const goToNextExercise = (currentBlockId, options = {}) => {
     const currentIdx = day.blocks.findIndex(b => b.id === currentBlockId);
     if (currentIdx === -1) return;
     const nextExercise = day.blocks.slice(currentIdx + 1).find(b => b.type === 'exercise');
-    if (nextExercise) onUpdate({ activeBlockId: nextExercise.id });
+    if (nextExercise) {
+      onUpdate({ activeBlockId: nextExercise.id });
+      if (options.fullscreen) {
+        setPendingFocus({ blockId: nextExercise.id, setIdx: options.setIdx ?? 0, fullscreen: true, id: generateId() });
+      }
+    }
   };
 
   return (
@@ -811,6 +817,8 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
                 shouldAutoFocusOnStart={block.id === firstExerciseId}
                 sessionStartTime={sessionStartTime}
                 isDraggable={!isSessionActive}
+                pendingFocusRequest={pendingFocus && pendingFocus.blockId === block.id ? pendingFocus : null}
+                onPendingFocusApplied={() => setPendingFocus(null)}
                 onToggle={() => {
                   const nextActiveId = day.activeBlockId === block.id ? null : block.id;
                   onUpdate({ activeBlockId: nextActiveId });
@@ -832,7 +840,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
   );
 }
 
-function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null, goToNextExercise = () => {} }) {
+function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null, goToNextExercise = () => {}, pendingFocusRequest = null, onPendingFocusApplied = () => {} }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedSetIdx, setFocusedSetIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
@@ -869,13 +877,27 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
     lastAutoFocusStartRef.current = sessionStartTime;
   }, [sessionStartTime, isSessionActive, isExpanded, shouldAutoFocusOnStart, activeSetIdx]);
 
+  useEffect(() => {
+    if (!pendingFocusRequest || !isSessionActive || !isExpanded) return;
+    const requestedIdx = Math.min(
+      Math.max(pendingFocusRequest.setIdx ?? 0, 0),
+      Math.max((block.setsData || []).length - 1, 0)
+    );
+    setFocusedSetIdx(requestedIdx);
+    if (pendingFocusRequest.fullscreen && !isTimerActive) {
+      setIsFocusFullscreen(true);
+    }
+    onPendingFocusApplied();
+  }, [pendingFocusRequest, isSessionActive, isExpanded, isTimerActive, block.setsData, onPendingFocusApplied]);
+
   const goToNextSetOrExercise = () => {
     const nextIncompleteIdx = (block.setsData || []).findIndex((s, idx) => idx > safeFocusedSetIdx && !s.completed);
     if (nextIncompleteIdx !== -1) {
       setFocusedSetIdx(nextIncompleteIdx);
+      if (!isTimerActive) setIsFocusFullscreen(true);
       return;
     }
-    goToNextExercise(block.id);
+    goToNextExercise(block.id, { setIdx: 0, fullscreen: true });
   };
 
   const toggleSetComplete = (sIdx, options = {}) => {
