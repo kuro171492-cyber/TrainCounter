@@ -1152,7 +1152,10 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
                   return (
                     <button
                       key={set.id}
-                      onClick={() => setFocusedSetIdx(sIdx)}
+                      onClick={() => {
+                        setFocusedSetIdx(sIdx);
+                        if (!isTimerActive) setIsFocusFullscreen(true);
+                      }}
                       className={`min-w-[82px] h-8 px-2 rounded-t-xl border-t-2 border-x-2 font-black text-[11px] uppercase italic tracking-wide transition-all ${isDone ? 'border-[#32D74B] text-[#32D74B] bg-[#32D74B]/10' : isActiveTab ? 'border-red-500 text-red-500 bg-red-500/10' : 'border-white/15 text-[#8E8E93] bg-black/25'}`}
                     >
                       Set {sIdx + 1}
@@ -1160,16 +1163,6 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
                   );
                 })}
               </div>
-
-              <button
-                disabled={isTimerActive}
-                onClick={() => setIsFocusFullscreen(true)}
-                className={`w-full h-11 rounded-xl border flex items-center justify-center gap-2 ${isTimerActive ? 'bg-black/20 border-white/5 text-white/30 cursor-not-allowed' : 'bg-black/40 border-white/10 text-red-500 active:scale-95'}`}
-                title="Развернуть на весь экран"
-              >
-                <Layers size={18} />
-                <span className="text-[11px] font-black uppercase italic tracking-wide">Focus</span>
-              </button>
 
               {isFocusFullscreen && focusedSet && renderFocusedSetCard()}
             </div>
