@@ -846,23 +846,31 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
     } else {
       nextSets[sIdx].completed = true;
       onChange({ setsData: nextSets });
-      if (block.restTime !== '0s') triggerTimer(block.restTime || '60s', 'rest');
+      if (block.restTime !== '0s') {
+        const nextIncompleteIdx = nextSets.findIndex(s => !s.completed);
+        const onRestComplete = returnToFocusAfterRest && nextIncompleteIdx !== -1
+          ? () => setIsFocusFullscreen(true)
+          : null;
+        triggerTimer(block.restTime || '60s', 'rest', '', onRestComplete);
+      }
     }
   };
 
   const handleFocusedSetAction = () => {
     if (!focusedSet) return;
     if (block.mode === 'time' && !focusedSet.completed) {
+      if (isFocusFullscreen) setIsFocusFullscreen(false);
       triggerTimer(
         focusedSet.value,
         'work',
         block.name,
-        () => toggleSetComplete(safeFocusedSetIdx),
+        () => toggleSetComplete(safeFocusedSetIdx, isFocusFullscreen),
         block.prepTime
       );
       return;
     }
-    toggleSetComplete(safeFocusedSetIdx);
+    if (isFocusFullscreen && !focusedSet.completed) setIsFocusFullscreen(false);
+    toggleSetComplete(safeFocusedSetIdx, isFocusFullscreen);
   };
 
   const adjustSetsCount = (delta) => {
