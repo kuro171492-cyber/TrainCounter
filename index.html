@@ -335,7 +335,7 @@ function App() {
   const [modal, setModal] = useState({ show: false, title: '', options: [], onSelect: null, currentVal: '', currentWeight: '0', hasWeightTab: false, activeTab: 'value' });
   const [confirmModal, setConfirmModal] = useState({ show: false, onConfirm: null, message: '', title: '' });
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [activeSession, setActiveSession] = useState({ dayId: null, elapsed: 0, startTime: null });
+  const [sessionState, setSessionState] = useState({ dayId: null, elapsed: 0, startTime: null });
   const [activeTimer, dispatchTimer] = useReducer(timerReducer, TIMER_IDLE_STATE);
 
   const audioCtx = useRef(null);
@@ -442,7 +442,7 @@ function App() {
   useEffect(() => {
     let interval;
     if (sessionState.dayId) {
-      interval = setInterval(() => dispatchSession({ type: 'TICK' }), 1000);
+      interval = setInterval(() => setSessionState(prev => ({ ...prev, elapsed: prev.elapsed + 1 })), 1000);
     }
     return () => clearInterval(interval);
   }, [sessionState.dayId]);
@@ -479,7 +479,7 @@ function App() {
   }, [activeTimer.completion, activeTimer.phase]);
 
   const triggerTimer = (timeStr, type = 'rest', label = '', transition = null, prepTimeStr = '0s') => {
-    if (!activeSession.dayId) return;
+    if (!sessionState.dayId) return;
     const pSecs = parseToSeconds(prepTimeStr);
     const wSecs = parseToSeconds(timeStr);
     const allowOvertime = type === 'work' ? DEFAULT_WORK_OVERTIME_ENABLED : false;
@@ -521,11 +521,7 @@ function App() {
   };
 
   const stopSessionAndResetProgress = () => {
-    if (!sessionState.dayId) {
-      dispatchSession({ type: 'STOP' });
-      return;
-    }
-
+    
     setSchedule(prev => prev.map(day => {
       if (day.id !== sessionState.dayId) return day;
       return {
@@ -539,7 +535,7 @@ function App() {
       };
     }));
 
-    dispatchSession({ type: 'STOP' });
+    setSessionState({ dayId: null, elapsed: 0, startTime: null });
   };
 
   return (
@@ -596,16 +592,16 @@ function App() {
             day={activeDayData}
             timerRef={mainTimerRef}
             isTimerActive={activeTimer.isActive}
-            isSessionActive={activeSession.dayId === activeDayData.id}
-            sessionElapsed={activeSession.elapsed}
-            sessionStartTime={activeSession.startTime}
+            isSessionActive={sessionState.dayId === activeDayData.id}
+            sessionElapsed={sessionState.elapsed}
+            sessionStartTime={sessionState.startTime}
             onStart={(firstExerciseId) => {
               setSchedule(prev => prev.map(d =>
                 d.id === activeDayData.id
                   ? { ...d, isCollapsed: false, activeBlockId: firstExerciseId || d.activeBlockId }
                   : d
               ));
-              dispatchSession({ type: 'START', dayId: activeDayData.id });
+              setSessionState({ dayId: activeDayData.id, elapsed: 0, startTime: Date.now() });
             }}
             onStop={stopSessionAndResetProgress}
             onRemove={() => {
