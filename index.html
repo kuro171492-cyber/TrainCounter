@@ -62,6 +62,11 @@ const QUICK_TIME = ['5s', '10s', '15s', '30s', '45s', '60s', '90s', '2m', '3m', 
 const QUICK_WEIGHTS = ['0', '2.5', '5', '10', '15', '20', '25', '50'];
 const PREP_OPTIONS = ['0s', '5s', '10s', '15s', '20s'];
 const DEFAULT_WORK_OVERTIME_ENABLED = false;
+const EXECUTION_ACTIONS = {
+  COMPLETE_STEP: 'COMPLETE_STEP',
+  SKIP: 'SKIP',
+  STOP: 'STOP'
+};
 
 const DEFAULT_VALUES = [
   'Сессия', 'Новое упражнение', 'Новый суперсет', 'Приседания', 'Отжимания', 'Новое упр'
@@ -106,7 +111,6 @@ const adjustWeight = (val, delta) => {
 
 const SmartInput = ({ value, onChange, className, placeholder, defaultValue, allowInlineEdit = true, editTrigger = 0 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const timerRef = useRef(null);
   const inputRef = useRef(null);
 
   const startEditing = () => {
@@ -119,28 +123,6 @@ const SmartInput = ({ value, onChange, className, placeholder, defaultValue, all
         inputRef.current.value = val;
       }
     }, 50);
-  };
-
-  const handleTouchStart = (e) => {
-    if (!allowInlineEdit) return;
-    timerRef.current = setTimeout(() => {
-      startEditing();
-    }, 600);
-  };
-
-  const handleTouchMove = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  };
-
-  const handleTouchEnd = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  };
-
-  const handleDoubleClick = (e) => {
-    if (!allowInlineEdit) return;
-    e.stopPropagation();
-    e.preventDefault();
-    startEditing();
   };
 
   useEffect(() => {
@@ -177,62 +159,13 @@ const SmartInput = ({ value, onChange, className, placeholder, defaultValue, all
         onFocus={handleFocus}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        onDoubleClick={handleDoubleClick}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
-        readOnly={!isEditing}
+        readOnly={!allowInlineEdit && !isEditing}
         className={`
           ${className} w-full transition-all duration-200
-          ${isEditing ? 'bg-black/40 ring-1 ring-red-500 rounded px-1 text-red-400' : 'cursor-default pointer-events-auto'}
+          ${isEditing ? 'bg-black/40 ring-1 ring-red-500 rounded px-1 text-red-400' : 'pointer-events-auto'}
         `}
         placeholder={placeholder}
       />
-    </div>
-  );
-};
-
-const SwipeableCell = ({ children, onSwipeRight, isDone, canSwipe, isHighlighted, isSessionActive }) => {
-  const [startX, setStartX] = useState(0);
-  const [offsetX, setOffsetX] = useState(0);
-  const threshold = 60;
-
-  const handleTouchStart = (e) => {
-    if (!isSessionActive || !canSwipe || isDone || !isHighlighted) return;
-    setStartX(e.touches[0].clientX);
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isSessionActive || !canSwipe || isDone || !isHighlighted) return;
-    const diff = e.touches[0].clientX - startX;
-    if (diff > 0) setOffsetX(Math.min(diff, 100));
-  };
-
-  const handleTouchEnd = () => {
-    if (offsetX > threshold) onSwipeRight();
-    setOffsetX(0);
-  };
-
-  const getStyleClasses = () => {
-    if (isDone) return 'ring-2 ring-[#32D74B] ring-inset opacity-60 scale-95';
-    if (!isSessionActive) return 'ring-1 ring-white/10 opacity-100 scale-100';
-    if (isHighlighted) return 'ring-2 ring-red-500 ring-inset opacity-100 scale-105 z-10 shadow-lg shadow-red-900/20';
-    return 'opacity-30 scale-100 ring-1 ring-white/5 pointer-events-none';
-  };
-
-  return (
-    <div className={`relative overflow-hidden rounded-[16px] flex-1 h-full transition-all duration-300 ${getStyleClasses()}`}>
-      <div className="absolute inset-0 bg-red-600 flex items-center pl-4 transition-opacity duration-200" style={{ opacity: offsetX > 10 ? 1 : 0 }}>
-        <Play className="w-4 h-4 text-white fill-white" />
-      </div>
-      <div
-        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-        style={{ transform: `translateX(${offsetX}px)` }}
-        className="relative z-10 h-full w-full transition-transform duration-200"
-      >
-        {children}
-      </div>
     </div>
   );
 };
@@ -827,6 +760,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
                 onRemove={() => onUpdate({ blocks: day.blocks.filter(b => b.id !== block.id) })}
                 onChange={(data) => onUpdate({ blocks: day.blocks.map(b => b.id === block.id ? { ...b, ...data } : b) })}
                 goToNextExercise={goToNextExercise}
+                onStopExecution={onStop}
                 openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer}
               />
             </div>
@@ -841,12 +775,12 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
   );
 }
 
-function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null, goToNextExercise = () => {}, pendingFocusRequest = null, onPendingFocusApplied = () => {} }) {
+function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null, goToNextExercise = () => {}, pendingFocusRequest = null, onPendingFocusApplied = () => {}, onStopExecution = () => {} }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedSetIdx, setFocusedSetIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const lastAutoFocusStartRef = useRef(null);
-  if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} isTimerActive={isTimerActive} goToNextExercise={goToNextExercise} />;
+  if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} isTimerActive={isTimerActive} goToNextExercise={goToNextExercise} onStopExecution={onStopExecution} />;
 
   const isAllDone = block.setsData?.every(s => s.completed) && block.setsData?.length > 0;
   const activeSetIdx = (block.setsData || []).findIndex(s => !s.completed);
@@ -937,16 +871,28 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
     toggleSetComplete(safeFocusedSetIdx, { onRestComplete: goToNextSetOrExercise });
   };
 
-  const adjustFocusedSetValue = (delta) => {
-    if (!focusedSet) return;
-    const currentRaw = focusedSet.value?.toString() || '0';
-    const numericPart = parseInt(currentRaw.replace(/[^\d]/g, ''), 10);
-    const baseValue = Number.isNaN(numericPart) ? 0 : numericPart;
-    const nextNumeric = Math.max(1, baseValue + delta);
-    const nextValue = block.mode === 'time' ? `${nextNumeric}s` : `${nextNumeric}`;
+  const skipFocusedSet = () => {
+    if (!focusedSet || focusedSet.completed) return;
     const nextSets = [...block.setsData];
-    nextSets[safeFocusedSetIdx] = { ...nextSets[safeFocusedSetIdx], value: nextValue };
+    nextSets[safeFocusedSetIdx] = { ...nextSets[safeFocusedSetIdx], completed: true };
     onChange({ setsData: nextSets });
+    goToNextSetOrExercise();
+  };
+
+  const dispatchExecutionAction = (action) => {
+    switch (action.type) {
+      case EXECUTION_ACTIONS.COMPLETE_STEP:
+        handleFocusedSetAction();
+        break;
+      case EXECUTION_ACTIONS.SKIP:
+        skipFocusedSet();
+        break;
+      case EXECUTION_ACTIONS.STOP:
+        onStopExecution();
+        break;
+      default:
+        break;
+    }
   };
 
   const adjustSetsCount = (delta) => {
@@ -977,62 +923,16 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
     if (!focusedSet) return null;
     return (
       <div className="fixed inset-0 z-[220] bg-[#FF3B30] text-white flex flex-col items-center justify-center p-6">
-        <button
-          onClick={() => setIsFocusFullscreen(false)}
-          className="absolute top-6 right-6 w-12 h-12 rounded-full bg-black/20 text-white/80 flex items-center justify-center active:scale-95"
-          title="Закрыть фокус"
-        >
-          <X size={22} />
-        </button>
-
-        <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2 italic">ФОКУС</span>
-        <div className="text-2xl font-black uppercase italic tracking-wide mb-2 text-center">{block.name}</div>
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
-          {(block.setsData || []).map((_, setIdx) => {
-            const isActiveSet = setIdx === safeFocusedSetIdx;
-            return (
-              <button
-                key={`focus-set-${setIdx}`}
-                onClick={() => setFocusedSetIdx(setIdx)}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-black uppercase italic tracking-[0.08em] transition-all active:scale-95 ${
-                  isActiveSet
-                    ? 'bg-white text-[#FF3B30]'
-                    : 'bg-black/25 border border-white/20 text-white/85'
-                }`}
-              >
-                {`set ${setIdx + 1}`}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="text-9xl font-black tabular-nums tracking-tighter leading-none italic mb-16">
+        <div className="text-2xl font-black uppercase italic tracking-wide mb-4 text-center">{block.name}</div>
+        <div className="text-sm font-black uppercase tracking-[0.2em] opacity-80 mb-8">{`Set ${safeFocusedSetIdx + 1} / ${block.setsData.length}`}</div>
+        <div className="text-9xl font-black tabular-nums tracking-tighter leading-none italic mb-12">
           {focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}
         </div>
-
-        <div className="flex items-center gap-4 mb-10">
-          <button
-            onClick={() => adjustFocusedSetValue(-1)}
-            className="w-14 h-14 rounded-full bg-black/25 border border-white/10 flex items-center justify-center active:scale-95"
-            title={block.mode === 'time' ? 'Уменьшить время' : 'Уменьшить повторы'}
-          >
-            <Minus size={24} />
-          </button>
-          <button
-            onClick={() => adjustFocusedSetValue(1)}
-            className="w-14 h-14 rounded-full bg-black/25 border border-white/10 flex items-center justify-center active:scale-95"
-            title={block.mode === 'time' ? 'Увеличить время' : 'Увеличить повторы'}
-          >
-            <Plus size={24} />
-          </button>
+        <div className="grid grid-cols-3 gap-3 w-full max-w-md">
+          <button onClick={() => dispatchExecutionAction({ type: EXECUTION_ACTIONS.COMPLETE_STEP })} className="h-14 rounded-2xl bg-[#32D74B] text-black font-black uppercase tracking-wide active:scale-95">СДЕЛАНО</button>
+          <button onClick={() => dispatchExecutionAction({ type: EXECUTION_ACTIONS.SKIP })} className="h-14 rounded-2xl bg-black/30 border border-white/20 text-white font-black uppercase tracking-wide active:scale-95">СКИП</button>
+          <button onClick={() => dispatchExecutionAction({ type: EXECUTION_ACTIONS.STOP })} className="h-14 rounded-2xl bg-black/40 border border-red-900/50 text-white font-black uppercase tracking-wide active:scale-95">СТОП</button>
         </div>
-
-        <button
-          onClick={handleFocusedSetAction}
-          className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-95 ${focusedSet.completed ? 'bg-[#32D74B]' : 'bg-black/30'}`}
-        >
-          <Check size={40} className={focusedSet.completed ? 'text-black stroke-[3px]' : 'text-white'} />
-        </button>
       </div>
     );
   };
@@ -1133,14 +1033,12 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
                                 {isTime ? <Timer size={18} /> : <Hash size={18} />}
                               </button>
                             )}
-                            <SwipeableCell isSessionActive={isSessionActive} canSwipe={isTime} isDone={isDone} onSwipeRight={() => triggerTimer(set.value, 'work', block.name, () => toggleSetComplete(sIdx, { onRestComplete: goToNextSetOrExercise }), block.prepTime)} isHighlighted={isHighlighted}>
-                              <div onClick={() => !isDone && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, set.value, (v, weight) => {
-                                const next = [...block.setsData]; next[sIdx] = {...next[sIdx], value: v, weight: weight}; onChange({setsData: next});
-                              }, true, set.weight)} className={`h-full flex flex-col items-center justify-center cursor-pointer transition-colors ${isDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
-                                 <span className={`font-black text-base tabular-nums italic transition-colors ${isDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{set.value}{isTime && !set.value.toString().includes('s') ? 's' : ''}</span>
-                                 {parseFloat(set.weight) > 0 && <span className={`text-[7px] font-black mt-0.5 italic text-red-500 uppercase transition-opacity ${isSessionActive && !isHighlighted && !isDone ? 'opacity-30' : 'opacity-100'}`}>{set.weight} kg</span>}
-                              </div>
-                            </SwipeableCell>
+                            <div onClick={() => !isDone && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, set.value, (v, weight) => {
+                              const next = [...block.setsData]; next[sIdx] = {...next[sIdx], value: v, weight: weight}; onChange({setsData: next});
+                            }, true, set.weight)} className={`relative overflow-hidden rounded-[16px] flex-1 h-full transition-all duration-300 flex flex-col items-center justify-center cursor-pointer ${isDone ? 'bg-[#32D74B]/10 ring-2 ring-[#32D74B] ring-inset opacity-60 scale-95' : !isSessionActive ? 'bg-black/30 border border-white/5 ring-1 ring-white/10' : isHighlighted ? 'bg-black/30 border border-white/5 ring-2 ring-red-500 ring-inset opacity-100 scale-105 z-10 shadow-lg shadow-red-900/20' : 'bg-black/30 border border-white/5 opacity-30 scale-100 ring-1 ring-white/5 pointer-events-none'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
+                               <span className={`font-black text-base tabular-nums italic transition-colors ${isDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{set.value}{isTime && !set.value.toString().includes('s') ? 's' : ''}</span>
+                               {parseFloat(set.weight) > 0 && <span className={`text-[7px] font-black mt-0.5 italic text-red-500 uppercase transition-opacity ${isSessionActive && !isHighlighted && !isDone ? 'opacity-30' : 'opacity-100'}`}>{set.weight} kg</span>}
+                            </div>
                          </div>
                          <button
                            disabled={!isSessionActive || (isFuture && !isDone)}
@@ -1191,7 +1089,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   );
 }
 
-function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable, isTimerActive, goToNextExercise = () => {} }) {
+function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable, isTimerActive, goToNextExercise = () => {}, onStopExecution = () => {} }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedRoundIdx, setFocusedRoundIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
@@ -1356,7 +1254,6 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   };
 
   const renderFocusedRoundCard = () => {
-    const canEditRound = !focusedRoundDone;
     const hasTimedExercises = timedExerciseIndexes.length > 0;
     const roundState = roundFlowState[safeFocusedRoundIdx] || {
       nextTimedIdx: timedExerciseIndexes[0] ?? -1,
@@ -1439,89 +1336,43 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
       toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) });
     };
 
+    const skipFocusedRound = () => {
+      if (focusedRoundDone) return;
+      toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) });
+    };
+
+    const dispatchExecutionAction = (action) => {
+      switch (action.type) {
+        case EXECUTION_ACTIONS.COMPLETE_STEP:
+          handleFocusedRoundAction();
+          break;
+        case EXECUTION_ACTIONS.SKIP:
+          skipFocusedRound();
+          break;
+        case EXECUTION_ACTIONS.STOP:
+          onStopExecution();
+          break;
+        default:
+          break;
+      }
+    };
+
+    const activeExercise = (block.exercises || [])[nextTimedIdx >= 0 ? nextTimedIdx : 0];
+    const activeCell = activeExercise ? (block.values[safeFocusedRoundIdx]?.[activeExercise.id] || { value: '10', weight: '0' }) : { value: '10', weight: '0' };
+    const shownValue = `${activeCell.value}${activeExercise?.mode === 'time' && !activeCell.value.toString().includes('s') ? 's' : ''}`;
+
     return (
       <div className="fixed inset-0 z-[220] bg-[#2A2424] text-white flex flex-col items-center justify-center p-6">
-        <button
-          onClick={() => {
-            setFocusDismissedManually(true);
-            setIsFocusFullscreen(false);
-          }}
-          className="absolute top-6 right-6 w-12 h-12 rounded-full bg-black/25 text-white/80 flex items-center justify-center active:scale-95"
-          title="Закрыть фокус"
-        >
-          <X size={22} />
-        </button>
-
-        <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2 italic">ФОКУС</span>
-        <div className="text-2xl font-black uppercase italic tracking-wide mb-2 text-center">{block.name}</div>
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
-          {Array.from({ length: block.rounds }).map((_, rIdx) => {
-            const isActiveRound = rIdx === safeFocusedRoundIdx;
-            return (
-              <button
-                key={`focus-round-${rIdx}`}
-                onClick={() => setFocusedRoundIdx(rIdx)}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-black uppercase italic tracking-[0.08em] transition-all active:scale-95 ${
-                  isActiveRound ? 'bg-white text-[#2A2424]' : 'bg-black/25 border border-white/20 text-white/85'
-                }`}
-              >
-                {`round ${rIdx + 1}`}
-              </button>
-            );
-          })}
+        <div className="text-2xl font-black uppercase italic tracking-wide mb-4 text-center">{activeExercise?.name || block.name}</div>
+        <div className="text-sm font-black uppercase tracking-[0.2em] opacity-80 mb-8">{`Round ${safeFocusedRoundIdx + 1} / ${block.rounds}`}</div>
+        <div className="text-8xl font-black tabular-nums tracking-tighter leading-none italic mb-12 text-center">
+          {shownValue}
         </div>
-
-        <div className="w-full max-w-sm space-y-3 mb-10">
-          {(block.exercises || []).map((ex) => {
-            const cellData = block.values[safeFocusedRoundIdx]?.[ex.id] || { value: '10', weight: '0' };
-            const val = cellData.value || '10';
-            const wt = cellData.weight || '0';
-            const isTime = ex.mode === 'time';
-            const isExerciseCompleted = !!roundExerciseCompletion[safeFocusedRoundIdx]?.[ex.id];
-            return (
-              <button
-                key={`focus-ex-${ex.id}`}
-                onClick={() => canEditRound && openModal(ex.name || 'Exercise', isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
-                  const nextValues = [...block.values];
-                  nextValues[safeFocusedRoundIdx] = { ...nextValues[safeFocusedRoundIdx], [ex.id]: { value: v, weight: weight } };
-                  onChange({
-                    values: nextValues,
-                    exerciseCompletions: setExerciseCompletion(safeFocusedRoundIdx, ex.id, false)
-                  });
-                }, true, wt)}
-                className={`w-full rounded-2xl p-4 border transition-all text-left ${
-                  focusedRoundDone || isExerciseCompleted
-                    ? 'bg-[#32D74B]/10 border-[#32D74B]/40'
-                    : 'bg-black/25 border-white/10 active:scale-[0.99]'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3 mb-1">
-                  <div className="text-[10px] font-black uppercase italic tracking-widest text-[#8E8E93] truncate">{ex.name}</div>
-                  {isExerciseCompleted && !focusedRoundDone && (
-                    <Check size={14} className="text-[#32D74B] shrink-0" />
-                  )}
-                </div>
-                <div className="flex items-end gap-2">
-                  <span className={`font-black text-4xl tabular-nums italic ${focusedRoundDone || isExerciseCompleted ? 'text-[#32D74B]' : 'text-white'}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
-                  {parseFloat(wt) > 0 && <span className="text-[11px] font-black mb-1 italic uppercase text-red-500">{wt} kg</span>}
-                </div>
-              </button>
-            );
-          })}
+        <div className="grid grid-cols-3 gap-3 w-full max-w-md">
+          <button onClick={() => dispatchExecutionAction({ type: EXECUTION_ACTIONS.COMPLETE_STEP })} className="h-14 rounded-2xl bg-[#32D74B] text-black font-black uppercase tracking-wide active:scale-95">СДЕЛАНО</button>
+          <button onClick={() => dispatchExecutionAction({ type: EXECUTION_ACTIONS.SKIP })} className="h-14 rounded-2xl bg-black/30 border border-white/20 text-white font-black uppercase tracking-wide active:scale-95">СКИП</button>
+          <button onClick={() => dispatchExecutionAction({ type: EXECUTION_ACTIONS.STOP })} className="h-14 rounded-2xl bg-black/40 border border-red-900/50 text-white font-black uppercase tracking-wide active:scale-95">СТОП</button>
         </div>
-
-        <button
-          onClick={handleFocusedRoundAction}
-          className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-95 ${focusedRoundDone ? 'bg-[#32D74B]' : 'bg-black/35'}`}
-        >
-          {focusedRoundDone ? (
-            <Check size={40} className="text-black stroke-[3px]" />
-          ) : hasTimedExercises && !isAwaitingRoundConfirm ? (
-            <Play size={38} className="text-white fill-white translate-x-[2px]" />
-          ) : (
-            <Check size={40} className="text-white" />
-          )}
-        </button>
       </div>
     );
   };
@@ -1646,19 +1497,17 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                                       {isTime ? <Timer size={18} /> : <Hash size={18} />}
                                     </button>
                                  )}
-                                  <SwipeableCell isSessionActive={isSessionActive} canSwipe={isTime} isDone={isRoundDone} onSwipeRight={() => triggerTimer(val, 'work', ex.name, null, block.prepTime)} isHighlighted={isHighlighted}>
-                                    <div onClick={() => !isRoundDone && openModal('Round '+(rIdx+1), isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
-                                      let nv = [...block.values];
-                                      nv[rIdx] = { ...nv[rIdx], [ex.id]: { value: v, weight: weight } };
-                                      onChange({
-                                        values: nv,
-                                        exerciseCompletions: setExerciseCompletion(rIdx, ex.id, false)
-                                      });
-                                    }, true, wt)} className={`h-full flex flex-col items-center justify-center transition-colors ${isRoundDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
-                                      <span className={`font-black text-base tabular-nums italic transition-colors ${isRoundDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
-                                      {parseFloat(wt) > 0 && <span className={`text-[7px] font-black mt-0.5 italic uppercase text-red-500 transition-opacity ${isSessionActive && !isHighlighted && !isRoundDone ? 'opacity-30' : 'opacity-100'}`}>{wt} kg</span>}
-                                    </div>
-                                  </SwipeableCell>
+                                  <div onClick={() => !isRoundDone && openModal('Round '+(rIdx+1), isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
+                                    let nv = [...block.values];
+                                    nv[rIdx] = { ...nv[rIdx], [ex.id]: { value: v, weight: weight } };
+                                    onChange({
+                                      values: nv,
+                                      exerciseCompletions: setExerciseCompletion(rIdx, ex.id, false)
+                                    });
+                                  }, true, wt)} className={`relative overflow-hidden rounded-[16px] flex-1 h-full transition-all duration-300 flex flex-col items-center justify-center ${isRoundDone ? 'bg-[#32D74B]/10 ring-2 ring-[#32D74B] ring-inset opacity-60 scale-95' : !isSessionActive ? 'bg-black/30 border border-white/5 ring-1 ring-white/10' : isHighlighted ? 'bg-black/30 border border-white/5 ring-2 ring-red-500 ring-inset opacity-100 scale-105 z-10 shadow-lg shadow-red-900/20' : 'bg-black/30 border border-white/5 opacity-30 scale-100 ring-1 ring-white/5 pointer-events-none'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
+                                    <span className={`font-black text-base tabular-nums italic transition-colors ${isRoundDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
+                                    {parseFloat(wt) > 0 && <span className={`text-[7px] font-black mt-0.5 italic uppercase text-red-500 transition-opacity ${isSessionActive && !isHighlighted && !isRoundDone ? 'opacity-30' : 'opacity-100'}`}>{wt} kg</span>}
+                                  </div>
                               </div>
                             </div>
                           );
