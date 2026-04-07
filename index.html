@@ -322,6 +322,33 @@ const SmartInput = ({ value, onChange, className, placeholder, defaultValue, all
   );
 };
 
+function SwipeableCell({ children, onSwipeRight, canSwipe }) {
+  const startX = useRef(null);
+
+  const handleTouchStart = (e) => {
+    if (!canSwipe) return;
+    startX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (!canSwipe || startX.current === null) return;
+    const deltaX = e.changedTouches[0].clientX - startX.current;
+
+    if (deltaX > 50) onSwipeRight?.();
+    startX.current = null;
+  };
+
+  const handleTouchCancel = () => {
+    startX.current = null;
+  };
+
+  return (
+    <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchCancel}>
+      {children}
+    </div>
+  );
+}
+
 function App() {
   const [schedule, setSchedule] = useState(() => {
     const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('wb_neon_clean_v54') : null;
