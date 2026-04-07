@@ -1194,10 +1194,14 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedRoundIdx, setFocusedRoundIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
+  const [roundFlowState, setRoundFlowState] = useState({});
   const isBlockDone = block.completedRounds?.length === block.rounds;
   const activeRoundIdx = Array.from({ length: block.rounds }).findIndex((_, i) => !(block.completedRounds || []).includes(i));
   const safeFocusedRoundIdx = Math.min(Math.max(focusedRoundIdx, 0), Math.max(block.rounds - 1, 0));
   const focusedRoundDone = (block.completedRounds || []).includes(safeFocusedRoundIdx);
+  const timedExerciseIndexes = (block.exercises || [])
+    .map((ex, idx) => (ex.mode === 'time' ? idx : -1))
+    .filter((idx) => idx !== -1);
 
   useEffect(() => {
     if (!isSessionActive) return;
@@ -1217,6 +1221,26 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     if (isTimerActive) setIsFocusFullscreen(false);
   }, [isTimerActive]);
 
+  useEffect(() => {
+    if (!isSessionActive) {
+      setRoundFlowState({});
+      return;
+    }
+    setRoundFlowState((prev) => {
+      const next = {};
+      for (let rIdx = 0; rIdx < block.rounds; rIdx++) {
+        if ((block.completedRounds || []).includes(rIdx)) continue;
+        const firstTimedIdx = timedExerciseIndexes[0] ?? -1;
+        const current = prev[rIdx];
+        next[rIdx] = {
+          nextTimedIdx: current?.nextTimedIdx ?? firstTimedIdx,
+          awaitingConfirm: current?.awaitingConfirm ?? false
+        };
+      }
+      return next;
+    });
+  }, [isSessionActive, block.rounds, block.completedRounds, timedExerciseIndexes.join(',')]);
+
   const goToNextRoundOrExercise = (rIdx) => {
     const nextRoundIdx = Array.from({ length: block.rounds }).findIndex((_, idx) => idx > rIdx && !(block.completedRounds || []).includes(idx));
     if (nextRoundIdx !== -1) {
@@ -1232,8 +1256,17 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     if (!isSessionActive || (rIdx !== activeRoundIdx && !(block.completedRounds || []).includes(rIdx))) return;
     const isCompleted = (block.completedRounds || []).includes(rIdx);
     if (isCompleted) {
+      setRoundFlowState((prev) => {
+        const firstTimedIdx = timedExerciseIndexes[0] ?? -1;
+        return { ...prev, [rIdx]: { nextTimedIdx: firstTimedIdx, awaitingConfirm: false } };
+      });
       openConfirm('Сбросить круг?', () => onChange({ completedRounds: block.completedRounds.filter(r => r !== rIdx) }), 'Сброс');
     } else {
+      setRoundFlowState((prev) => {
+        const next = { ...prev };
+        delete next[rIdx];
+        return next;
+      });
       onChange({ completedRounds: [...(block.completedRounds || []), rIdx] });
       if (block.restTime !== '0s') {
         triggerTimer(block.restTime || '60s', 'rest', '', onRestComplete);
@@ -1295,22 +1328,63 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
 
   const renderFocusedRoundCard = () => {
     const canEditRound = !focusedRoundDone;
-    const focusedTimedExercise = (block.exercises || []).find((ex) => ex.mode === 'time');
+    const hasTimedExercises = timedExerciseIndexes.length > 0;
+    const roundState = roundFlowState[safeFocusedRoundIdx] || {
+      nextTimedIdx: timedExerciseIndexes[0] ?? -1,
+      awaitingConfirm: false
+    };
+    const isAwaitingRoundConfirm = roundState.awaitingConfirm;
+    const nextTimedIdx = roundState.nextTimedIdx;
+
+    const runTimedExercise = (roundIdx, exIdx) => {
+      const timedExercise = block.exercises?.[exIdx];
+      if (!timedExercise) return;
+      const timedValue = block.values[roundIdx]?.[timedExercise.id]?.value || '10s';
+
+      triggerTimer(
+        timedValue,
+        'work',
+        timedExercise.name || block.name,
+        () => {
+          const followingTimedIdx = timedExerciseIndexes.find((idx) => idx > exIdx);
+          if (followingTimedIdx !== undefined) {
+            if (followingTimedIdx === exIdx + 1) {
+              runTimedExercise(roundIdx, followingTimedIdx);
+              return;
+            }
+            setRoundFlowState((prev) => ({
+              ...prev,
+              [roundIdx]: { nextTimedIdx: followingTimedIdx, awaitingConfirm: false }
+            }));
+            return;
+          }
+
+          const lastExercise = block.exercises?.[block.exercises.length - 1];
+          if (lastExercise?.mode !== 'time') {
+            setRoundFlowState((prev) => ({
+              ...prev,
+              [roundIdx]: { nextTimedIdx: -1, awaitingConfirm: true }
+            }));
+            return;
+          }
+
+          toggleRoundComplete(roundIdx, { onRestComplete: () => goToNextRoundOrExercise(roundIdx) });
+        },
+        block.prepTime || '0s'
+      );
+    };
 
     const handleFocusedRoundAction = () => {
       if (focusedRoundDone) {
         toggleRoundComplete(safeFocusedRoundIdx);
         return;
       }
-      if (focusedTimedExercise) {
-        const timedValue = block.values[safeFocusedRoundIdx]?.[focusedTimedExercise.id]?.value || '10s';
-        triggerTimer(
-          timedValue,
-          'work',
-          focusedTimedExercise.name || block.name,
-          () => toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) }),
-          block.prepTime || '0s'
-        );
+      if (hasTimedExercises) {
+        if (isAwaitingRoundConfirm || nextTimedIdx === -1) {
+          toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) });
+          return;
+        }
+        runTimedExercise(safeFocusedRoundIdx, nextTimedIdx);
         return;
       }
       toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) });
@@ -1377,7 +1451,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         >
           {focusedRoundDone ? (
             <Check size={40} className="text-black stroke-[3px]" />
-          ) : focusedTimedExercise ? (
+          ) : hasTimedExercises && !isAwaitingRoundConfirm ? (
             <Play size={38} className="text-white fill-white translate-x-[2px]" />
           ) : (
             <Check size={40} className="text-white" />
