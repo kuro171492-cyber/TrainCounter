@@ -176,6 +176,86 @@ const adjustWeight = (val, delta) => {
   return Math.max(0, +(num + delta).toFixed(2)).toString();
 };
 
+const migrateLegacySetsDataToSteps = (setsData = [], fallbackName = 'Шаг') =>
+  setsData.map((set, idx) => ({
+    id: set.id || generateId(),
+    name: set.name || `${fallbackName} ${idx + 1}`,
+    type: set.mode || 'reps',
+    value: set.value ?? '10',
+    weight: set.weight ?? '0',
+    completed: !!set.completed
+  }));
+
+const migrateLegacySupersetToSteps = (block) => {
+  const rounds = Math.max(1, block.rounds || 1);
+  const exercises = block.exercises || [];
+  const values = block.values || [];
+  const completedRounds = new Set(block.completedRounds || []);
+  const roundExerciseCompletion = Array.isArray(block.roundExerciseCompletion) ? block.roundExerciseCompletion : [];
+
+  return Array.from({ length: rounds }).flatMap((_, rIdx) =>
+    exercises.map((ex, eIdx) => {
+      const cell = values[rIdx]?.[ex.id] || { value: '10', weight: '0' };
+      const doneInRound = !!roundExerciseCompletion[rIdx]?.[ex.id];
+      return {
+        id: generateId(),
+        name: ex.name || `Exercise ${eIdx + 1}`,
+        type: ex.mode || 'reps',
+        value: cell.value ?? '10',
+        weight: cell.weight ?? '0',
+        groupId: `round-${rIdx + 1}`,
+        round: rIdx + 1,
+        roundTotal: rounds,
+        roundOrder: eIdx + 1,
+        completed: completedRounds.has(rIdx) || doneInRound
+      };
+    })
+  );
+};
+
+const migrateBlockToStepsModel = (block) => {
+  if (block.steps) {
+    return {
+      id: block.id || generateId(),
+      name: block.name || 'Новое упражнение',
+      rest: block.rest || block.restTime || '60s',
+      prep: block.prep || block.prepTime || '5s',
+      isSettingsOpen: !!block.isSettingsOpen,
+      steps: (block.steps || []).map((step, idx) => ({
+        id: step.id || generateId(),
+        name: step.name || `Шаг ${idx + 1}`,
+        type: step.type || 'reps',
+        value: step.value ?? '10',
+        weight: step.weight ?? '0',
+        groupId: step.groupId,
+        round: step.round,
+        roundTotal: step.roundTotal,
+        roundOrder: step.roundOrder,
+        completed: !!step.completed
+      }))
+    };
+  }
+
+  const steps = block.type === 'superset'
+    ? migrateLegacySupersetToSteps(block)
+    : migrateLegacySetsDataToSteps(block.setsData || [], block.name || 'Шаг');
+
+  return {
+    id: block.id || generateId(),
+    name: block.name || (block.type === 'superset' ? 'Новый суперсет' : 'Новое упражнение'),
+    rest: block.restTime || block.rest || '60s',
+    prep: block.prepTime || block.prep || '5s',
+    isSettingsOpen: !!block.isSettingsOpen,
+    steps
+  };
+};
+
+const migrateScheduleModel = (rawSchedule = []) =>
+  (rawSchedule || []).map(day => ({
+    ...day,
+    blocks: (day.blocks || []).map(migrateBlockToStepsModel)
+  }));
+
 const SmartInput = ({ value, onChange, className, placeholder, defaultValue, allowInlineEdit = true, editTrigger = 0 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const timerRef = useRef(null);
@@ -312,7 +392,7 @@ const SwipeableCell = ({ children, onSwipeRight, isDone, canSwipe, isHighlighted
 function App() {
   const [schedule, setSchedule] = useState(() => {
     const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('wb_neon_clean_v54') : null;
-    return saved ? JSON.parse(saved) : [];
+    return saved ? migrateScheduleModel(JSON.parse(saved)) : [];
   });
 
   const [activeDayName, setActiveDayName] = useState('Пн');
@@ -518,16 +598,10 @@ function App() {
       return {
         ...day,
         blocks: (day.blocks || []).map(block => {
-          if (block.type === 'exercise') {
-            return {
-              ...block,
-              setsData: (block.setsData || []).map(set => ({ ...set, completed: false }))
-            };
-          }
-          if (block.type === 'superset') {
-            return { ...block, completedRounds: [], exerciseCompletions: {} };
-          }
-          return block;
+          return {
+            ...block,
+            steps: (block.steps || []).map(step => ({ ...step, completed: false }))
+          };
         })
       };
     }));
@@ -728,35 +802,48 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
   const [draggedId, setDraggedId] = useState(null);
   const [targetId, setTargetId] = useState(null);
   const [pendingFocus, setPendingFocus] = useState(null);
-  const firstExerciseId = day.blocks.find(block => block.type === 'exercise')?.id || null;
+  const firstExerciseId = day.blocks[0]?.id || null;
 
-  const addBlock = (type) => {
-    const newId = generateId();
-    const newBlock = { id: newId, type, name: type === 'exercise' ? 'Новое упражнение' : 'Новый суперсет', restTime: '60s', prepTime: '5s', isSettingsOpen: true };
-    if (type === 'exercise') {
-      newBlock.mode = 'reps';
-      newBlock.setsData = [
-        { id: generateId(), value: '10', weight: '0', completed: false },
-        { id: generateId(), value: '10', weight: '0', completed: false },
-        { id: generateId(), value: '10', weight: '0', completed: false }
-      ];
-    } else {
-      newBlock.rounds = 3;
-      const ex1Id = generateId();
-      const ex2Id = generateId();
-      newBlock.exercises = [{ id: ex1Id, name: 'Приседания', mode: 'reps' }, { id: ex2Id, name: 'Отжимания', mode: 'reps' }];
-      newBlock.values = [
-        { [ex1Id]: { value: '10', weight: '0' }, [ex2Id]: { value: '10', weight: '0' } },
-        { [ex1Id]: { value: '10', weight: '0' }, [ex2Id]: { value: '10', weight: '0' } },
-        { [ex1Id]: { value: '10', weight: '0' }, [ex2Id]: { value: '10', weight: '0' } }
-      ];
-      newBlock.completedRounds = [];
-      newBlock.exerciseCompletions = {};
-    }
-    onUpdate({ blocks: [...day.blocks, newBlock], activeBlockId: newId });
+  const createSimpleBlock = () => ({
+    id: generateId(),
+    name: 'Новое упражнение',
+    rest: '60s',
+    prep: '5s',
+    isSettingsOpen: true,
+    steps: Array.from({ length: 3 }).map(() => ({ id: generateId(), name: 'Шаг', type: 'reps', value: '10', weight: '0', completed: false }))
+  });
+
+  const createSupersetLikeBlock = () => {
+    const rounds = 3;
+    const exercises = ['Приседания', 'Отжимания'];
+    return {
+      id: generateId(),
+      name: 'Новый суперсет',
+      rest: '60s',
+      prep: '5s',
+      isSettingsOpen: true,
+      steps: Array.from({ length: rounds }).flatMap((_, rIdx) =>
+        exercises.map((exerciseName, eIdx) => ({
+          id: generateId(),
+          name: exerciseName,
+          type: 'reps',
+          value: '10',
+          weight: '0',
+          groupId: `round-${rIdx + 1}`,
+          round: rIdx + 1,
+          roundTotal: rounds,
+          roundOrder: eIdx + 1,
+          completed: false
+        }))
+      )
+    };
   };
 
-  // Drag and Drop Logic
+  const addBlock = (preset) => {
+    const newBlock = preset === 'superset' ? createSupersetLikeBlock() : createSimpleBlock();
+    onUpdate({ blocks: [...day.blocks, newBlock], activeBlockId: newBlock.id });
+  };
+
   const handleDragStart = (id) => {
     if (isSessionActive) return;
     setDraggedId(id);
@@ -790,11 +877,11 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
   const goToNextExercise = (currentBlockId, options = {}) => {
     const currentIdx = day.blocks.findIndex(b => b.id === currentBlockId);
     if (currentIdx === -1) return;
-    const nextExercise = day.blocks.slice(currentIdx + 1).find(b => b.type === 'exercise');
+    const nextExercise = day.blocks[currentIdx + 1];
     if (nextExercise) {
       onUpdate({ activeBlockId: nextExercise.id });
       if (options.fullscreen) {
-        setPendingFocus({ blockId: nextExercise.id, setIdx: options.setIdx ?? 0, fullscreen: true, id: generateId() });
+        setPendingFocus({ blockId: nextExercise.id, stepIdx: options.stepIdx ?? 0, fullscreen: true, id: generateId() });
       }
     }
   };
@@ -808,13 +895,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
               <span className="bg-[#FF3B30] text-white px-2 py-0.5 rounded-md font-black text-[8px] uppercase italic tracking-tighter">{day.dayName}</span>
               <span className="text-[8px] font-black uppercase tracking-widest text-[#48484A] italic">Workout Plan</span>
             </div>
-            <SmartInput
-              value={day.title}
-              defaultValue={`Сессия`}
-              onChange={(e) => onUpdate({ title: e.target.value })}
-              className="font-black text-2xl bg-transparent outline-none flex-1 truncate text-white uppercase italic tracking-tight"
-              placeholder="Session Name"
-            />
+            <SmartInput value={day.title} defaultValue={`Сессия`} onChange={(e) => onUpdate({ title: e.target.value })} className="font-black text-2xl bg-transparent outline-none flex-1 truncate text-white uppercase italic tracking-tight" placeholder="Session Name" />
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => openConfirm('Удалить этот план?', onRemove, 'Удаление')} className="p-2 text-[#48484A] hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
@@ -823,20 +904,12 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
         </div>
 
         {!isSessionActive ? (
-          <button onClick={() => onStart(firstExerciseId)} className="h-12 bg-red-600 text-white rounded-2xl flex items-center justify-center gap-3 font-black text-xs uppercase italic active:scale-[0.98] transition-all shadow-xl shadow-red-900/40 tracking-widest">
-            <Play className="w-4 h-4 fill-white" /> СТАРТ
-          </button>
+          <button onClick={() => onStart(firstExerciseId)} className="h-12 bg-red-600 text-white rounded-2xl flex items-center justify-center gap-3 font-black text-xs uppercase italic active:scale-[0.98] transition-all shadow-xl shadow-red-900/40 tracking-widest"><Play className="w-4 h-4 fill-white" /> СТАРТ</button>
         ) : (
           <div className="flex gap-2">
             <div className="flex-1 flex flex-col items-center justify-center h-14 bg-black/40 border border-red-500/30 rounded-2xl shadow-inner relative overflow-hidden">
-              <div className="flex items-center gap-1 mb-0.5">
-                <Clock size={8} className="text-red-500/60" />
-                <span className="text-[7px] font-black uppercase text-red-500/60 italic tracking-widest">Started at {formatWallTime(sessionStartTime)}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-1.5 h-1.5 bg-red-500 rounded-full mr-3 animate-pulse" />
-                <span className="text-white font-black text-2xl tabular-nums italic tracking-tighter leading-none">{formatTime(sessionElapsed)}</span>
-              </div>
+              <div className="flex items-center gap-1 mb-0.5"><Clock size={8} className="text-red-500/60" /><span className="text-[7px] font-black uppercase text-red-500/60 italic tracking-widest">Started at {formatWallTime(sessionStartTime)}</span></div>
+              <div className="flex items-center"><div className="w-1.5 h-1.5 bg-red-500 rounded-full mr-3 animate-pulse" /><span className="text-white font-black text-2xl tabular-nums italic tracking-tighter leading-none">{formatTime(sessionElapsed)}</span></div>
             </div>
             <button onClick={onStop} className="w-14 h-14 bg-red-600 rounded-2xl flex items-center justify-center text-white active:scale-95 shadow-xl shadow-red-900/20"><Square className="w-5 h-5 fill-white" /></button>
           </div>
@@ -846,14 +919,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
       {!day.isCollapsed && (
         <div className="px-3 pb-5 space-y-3 bg-black/30">
           {day.blocks.map((block) => (
-            <div
-              key={block.id}
-              draggable={!isSessionActive}
-              onDragStart={() => handleDragStart(block.id)}
-              onDragOver={(e) => handleDragOver(e, block.id)}
-              onDragEnd={handleDragEnd}
-              className={`transition-all duration-200 ${draggedId === block.id ? 'opacity-20 scale-95' : 'opacity-100'} ${targetId === block.id ? 'border-t-2 border-red-500 pt-2' : ''}`}
-            >
+            <div key={block.id} draggable={!isSessionActive} onDragStart={() => handleDragStart(block.id)} onDragOver={(e) => handleDragOver(e, block.id)} onDragEnd={handleDragEnd} className={`transition-all duration-200 ${draggedId === block.id ? 'opacity-20 scale-95' : 'opacity-100'} ${targetId === block.id ? 'border-t-2 border-red-500 pt-2' : ''}`}>
               <BlockItem
                 block={block}
                 isExpanded={day.activeBlockId === block.id}
@@ -864,16 +930,13 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
                 isDraggable={!isSessionActive}
                 pendingFocusRequest={pendingFocus && pendingFocus.blockId === block.id ? pendingFocus : null}
                 onPendingFocusApplied={() => setPendingFocus(null)}
-                timerCompletion={timerCompletion}
-                onTimerCompletionHandled={onTimerCompletionHandled}
-                onToggle={() => {
-                  const nextActiveId = day.activeBlockId === block.id ? null : block.id;
-                  onUpdate({ activeBlockId: nextActiveId });
-                }}
+                onToggle={() => onUpdate({ activeBlockId: day.activeBlockId === block.id ? null : block.id })}
                 onRemove={() => onUpdate({ blocks: day.blocks.filter(b => b.id !== block.id) })}
                 onChange={(data) => onUpdate({ blocks: day.blocks.map(b => b.id === block.id ? { ...b, ...data } : b) })}
                 goToNextExercise={goToNextExercise}
-                openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer}
+                openModal={openModal}
+                openConfirm={openConfirm}
+                triggerTimer={triggerTimer}
               />
             </div>
           ))}
@@ -889,25 +952,24 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
 
 function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null, goToNextExercise = () => {}, pendingFocusRequest = null, onPendingFocusApplied = () => {}, timerCompletion = null, onTimerCompletionHandled = () => {} }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
-  const [focusedSetIdx, setFocusedSetIdx] = useState(0);
+  const [focusedStepIdx, setFocusedStepIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const lastAutoFocusStartRef = useRef(null);
-  if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} isTimerActive={isTimerActive} goToNextExercise={goToNextExercise} timerCompletion={timerCompletion} onTimerCompletionHandled={onTimerCompletionHandled} />;
-
-  const isAllDone = block.setsData?.every(s => s.completed) && block.setsData?.length > 0;
-  const activeSetIdx = (block.setsData || []).findIndex(s => !s.completed);
-  const safeFocusedSetIdx = Math.min(Math.max(focusedSetIdx, 0), Math.max((block.setsData || []).length - 1, 0));
-  const focusedSet = block.setsData?.[safeFocusedSetIdx];
+  const steps = block.steps || [];
+  const isAllDone = steps.every(s => s.completed) && steps.length > 0;
+  const activeStepIdx = steps.findIndex(s => !s.completed);
+  const safeFocusedStepIdx = Math.min(Math.max(focusedStepIdx, 0), Math.max(steps.length - 1, 0));
+  const focusedStep = steps[safeFocusedStepIdx];
 
   useEffect(() => {
     if (!isSessionActive) return;
-    if (activeSetIdx >= 0) setFocusedSetIdx(activeSetIdx);
-  }, [activeSetIdx, isSessionActive]);
+    if (activeStepIdx >= 0) setFocusedStepIdx(activeStepIdx);
+  }, [activeStepIdx, isSessionActive]);
 
   useEffect(() => {
     if (!isSessionActive || !isExpanded) return;
-    setFocusedSetIdx(activeSetIdx >= 0 ? activeSetIdx : 0);
-  }, [isSessionActive, isExpanded, activeSetIdx]);
+    setFocusedStepIdx(activeStepIdx >= 0 ? activeStepIdx : 0);
+  }, [isSessionActive, isExpanded, activeStepIdx]);
 
   useEffect(() => {
     if (!isSessionActive || !isExpanded) setIsFocusFullscreen(false);
@@ -920,878 +982,93 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   useEffect(() => {
     if (!sessionStartTime || !isSessionActive || !isExpanded || !shouldAutoFocusOnStart) return;
     if (lastAutoFocusStartRef.current === sessionStartTime) return;
-    setFocusedSetIdx(activeSetIdx >= 0 ? activeSetIdx : 0);
+    setFocusedStepIdx(activeStepIdx >= 0 ? activeStepIdx : 0);
     lastAutoFocusStartRef.current = sessionStartTime;
-  }, [sessionStartTime, isSessionActive, isExpanded, shouldAutoFocusOnStart, activeSetIdx]);
+  }, [sessionStartTime, isSessionActive, isExpanded, shouldAutoFocusOnStart, activeStepIdx]);
 
   useEffect(() => {
     if (!pendingFocusRequest || !isSessionActive || !isExpanded) return;
-    const requestedIdx = Math.min(
-      Math.max(pendingFocusRequest.setIdx ?? 0, 0),
-      Math.max((block.setsData || []).length - 1, 0)
-    );
-    setFocusedSetIdx(requestedIdx);
-    if (pendingFocusRequest.fullscreen && !isTimerActive) {
-      setIsFocusFullscreen(true);
-    }
+    const requestedIdx = Math.min(Math.max(pendingFocusRequest.stepIdx ?? 0, 0), Math.max(steps.length - 1, 0));
+    setFocusedStepIdx(requestedIdx);
+    if (pendingFocusRequest.fullscreen && !isTimerActive) setIsFocusFullscreen(true);
     onPendingFocusApplied();
-  }, [pendingFocusRequest, isSessionActive, isExpanded, isTimerActive, block.setsData, onPendingFocusApplied]);
+  }, [pendingFocusRequest, isSessionActive, isExpanded, isTimerActive, steps.length, onPendingFocusApplied]);
 
-  const goAfterSet = () => {
-    const nextIncompleteIdx = (block.setsData || []).findIndex((s, idx) => idx > safeFocusedSetIdx && !s.completed);
+  const goToNextStepOrExercise = () => {
+    const nextIncompleteIdx = steps.findIndex((s, idx) => idx > safeFocusedStepIdx && !s.completed);
     if (nextIncompleteIdx !== -1) {
-      setFocusedSetIdx(nextIncompleteIdx);
+      setFocusedStepIdx(nextIncompleteIdx);
       if (!isTimerActive) setIsFocusFullscreen(true);
       return;
     }
-    goToNextExercise(block.id, { setIdx: 0, fullscreen: true });
+    goToNextExercise(block.id, { stepIdx: 0, fullscreen: true });
   };
 
-  const toggleSetComplete = (sIdx, options = {}) => {
-    const { goNext = false } = options;
-    if (!isSessionActive || (sIdx !== activeSetIdx && !block.setsData[sIdx].completed)) return;
-    const set = block.setsData[sIdx];
-    const nextSets = [...block.setsData];
-    if (set.completed) {
+  const toggleStepComplete = (sIdx, options = {}) => {
+    const { onRestComplete = null } = options;
+    if (!isSessionActive || (sIdx !== activeStepIdx && !steps[sIdx]?.completed)) return;
+    const target = steps[sIdx];
+    const nextSteps = [...steps];
+    if (target.completed) {
       openConfirm('Сбросить этап?', () => {
-        nextSets[sIdx].completed = false;
-        onChange({ setsData: nextSets });
+        nextSteps[sIdx] = { ...nextSteps[sIdx], completed: false };
+        onChange({ steps: nextSteps });
       }, 'Сброс');
     } else {
-      nextSets[sIdx].completed = true;
-      onChange({ setsData: nextSets });
-      if (block.restTime !== '0s') {
-        triggerTimer(block.restTime || '60s', 'rest', '', goNext ? { kind: 'afterRest', blockId: block.id, action: 'nextSetOrExercise' } : null);
-      } else if (goNext) {
-        goAfterSet();
+      nextSteps[sIdx] = { ...nextSteps[sIdx], completed: true };
+      onChange({ steps: nextSteps });
+      if ((block.rest || '0s') !== '0s') {
+        triggerTimer(block.rest || '60s', 'rest', '', onRestComplete);
+      } else if (onRestComplete) {
+        onRestComplete();
       }
     }
   };
 
-  useEffect(() => {
-    if (!timerCompletion || timerCompletion.action?.blockId !== block.id) return;
-    if (timerCompletion.action?.kind === 'completeSet') {
-      toggleSetComplete(timerCompletion.action.setIdx, { goNext: true });
-      onTimerCompletionHandled();
+  const handleFocusedStepAction = () => {
+    if (!focusedStep) return;
+    if (focusedStep.type === 'time' && !focusedStep.completed) {
+      triggerTimer(focusedStep.value, 'work', focusedStep.name || block.name, () => toggleStepComplete(safeFocusedStepIdx, { onRestComplete: goToNextStepOrExercise }), block.prep || '0s');
       return;
     }
-    if (timerCompletion.action?.kind === 'afterRest' && timerCompletion.action?.action === 'nextSetOrExercise') {
-      goAfterSet();
-      onTimerCompletionHandled();
-    }
-  }, [timerCompletion, block.id]);
-
-  const handleFocusedSetAction = () => {
-    if (!focusedSet) return;
-    if (block.mode === 'time' && !focusedSet.completed) {
-      triggerTimer(
-        focusedSet.value,
-        'work',
-        block.name,
-        { kind: 'completeSet', blockId: block.id, setIdx: safeFocusedSetIdx },
-        block.prepTime
-      );
-      return;
-    }
-    toggleSetComplete(safeFocusedSetIdx, { goNext: true });
+    toggleStepComplete(safeFocusedStepIdx, { onRestComplete: goToNextStepOrExercise });
   };
 
-  const adjustFocusedSetValue = (delta) => {
-    if (!focusedSet) return;
-    const currentRaw = focusedSet.value?.toString() || '0';
-    const numericPart = parseInt(currentRaw.replace(/[^\d]/g, ''), 10);
-    const baseValue = Number.isNaN(numericPart) ? 0 : numericPart;
-    const nextNumeric = Math.max(1, baseValue + delta);
-    const nextValue = block.mode === 'time' ? `${nextNumeric}s` : `${nextNumeric}`;
-    const nextSets = [...block.setsData];
-    nextSets[safeFocusedSetIdx] = { ...nextSets[safeFocusedSetIdx], value: nextValue };
-    onChange({ setsData: nextSets });
-  };
-
-  const adjustSetsCount = (delta) => {
-    const nextCount = Math.max(1, (block.setsData || []).length + delta);
-    if (nextCount === block.setsData.length) return;
-    let nextSets = [...block.setsData];
+  const adjustStepsCount = (delta) => {
+    const nextCount = Math.max(1, steps.length + delta);
+    if (nextCount === steps.length) return;
+    let nextSteps = [...steps];
     if (delta > 0) {
       for (let i = 0; i < delta; i++) {
-        nextSets.push({ id: generateId(), value: nextSets[nextSets.length - 1]?.value || '10', weight: nextSets[nextSets.length - 1]?.weight || '0', completed: false });
+        const last = nextSteps[nextSteps.length - 1] || { name: 'Шаг', type: 'reps', value: '10', weight: '0' };
+        nextSteps.push({ ...last, id: generateId(), completed: false });
       }
     } else {
-      nextSets = nextSets.slice(0, nextCount);
+      nextSteps = nextSteps.slice(0, nextCount);
     }
-    onChange({ setsData: nextSets });
-  };
-
-  const toggleMode = () => {
-    const newMode = block.mode === 'reps' ? 'time' : 'reps';
-    const nextSets = block.setsData.map(set => {
-      let val = set.value.toString().replace(/[sm]/g, '');
-      if (newMode === 'time' && !isNaN(val) && val !== "") val = val + 's';
-      return { ...set, value: val };
-    });
-    onChange({ mode: newMode, setsData: nextSets });
-  };
-
-  const renderFocusedSetCard = () => {
-    if (!focusedSet) return null;
-    return (
-      <div className="fixed inset-0 z-[220] bg-[#FF3B30] text-white flex flex-col items-center justify-center p-6">
-        <button
-          onClick={() => setIsFocusFullscreen(false)}
-          className="absolute top-6 right-6 w-12 h-12 rounded-full bg-black/20 text-white/80 flex items-center justify-center active:scale-95"
-          title="Закрыть фокус"
-        >
-          <X size={22} />
-        </button>
-
-        <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2 italic">ФОКУС</span>
-        <div className="text-2xl font-black uppercase italic tracking-wide mb-2 text-center">{block.name}</div>
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
-          {(block.setsData || []).map((_, setIdx) => {
-            const isActiveSet = setIdx === safeFocusedSetIdx;
-            return (
-              <button
-                key={`focus-set-${setIdx}`}
-                onClick={() => setFocusedSetIdx(setIdx)}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-black uppercase italic tracking-[0.08em] transition-all active:scale-95 ${
-                  isActiveSet
-                    ? 'bg-white text-[#FF3B30]'
-                    : 'bg-black/25 border border-white/20 text-white/85'
-                }`}
-              >
-                {`set ${setIdx + 1}`}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="text-9xl font-black tabular-nums tracking-tighter leading-none italic mb-16">
-          {focusedSet.value}{block.mode === 'time' && !focusedSet.value.toString().includes('s') ? 's' : ''}
-        </div>
-
-        <div className="flex items-center gap-4 mb-10">
-          <button
-            onClick={() => adjustFocusedSetValue(-1)}
-            className="w-14 h-14 rounded-full bg-black/25 border border-white/10 flex items-center justify-center active:scale-95"
-            title={block.mode === 'time' ? 'Уменьшить время' : 'Уменьшить повторы'}
-          >
-            <Minus size={24} />
-          </button>
-          <button
-            onClick={() => adjustFocusedSetValue(1)}
-            className="w-14 h-14 rounded-full bg-black/25 border border-white/10 flex items-center justify-center active:scale-95"
-            title={block.mode === 'time' ? 'Увеличить время' : 'Увеличить повторы'}
-          >
-            <Plus size={24} />
-          </button>
-        </div>
-
-        <button
-          onClick={handleFocusedSetAction}
-          className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-95 ${focusedSet.completed ? 'bg-[#32D74B]' : 'bg-black/30'}`}
-        >
-          <Check size={40} className={focusedSet.completed ? 'text-black stroke-[3px]' : 'text-white'} />
-        </button>
-      </div>
-    );
+    onChange({ steps: nextSteps });
   };
 
   return (
     <div className={`rounded-[28px] transition-all duration-300 overflow-hidden relative ${isExpanded ? 'bg-[#3A3A3C] shadow-lg' : 'bg-[#2C2C2E] border border-white/5'} ${isSessionActive && !isExpanded && !isAllDone ? 'opacity-80' : 'opacity-100'}`}>
-
-      {!isSessionActive && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          className="absolute top-2 right-2 p-2.5 text-[#48484A] hover:text-red-500 active:scale-90 transition-all z-[20]"
-        >
-          <Trash2 size={20} />
-        </button>
-      )}
-
+      {!isSessionActive && <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="absolute top-2 right-2 p-2.5 text-[#48484A] hover:text-red-500 active:scale-90 transition-all z-[20]"><Trash2 size={20} /></button>}
       <div onClick={onToggle} className="flex items-center justify-between p-3.5 cursor-pointer">
         <div className="flex items-start gap-3.5 flex-1 overflow-hidden">
-          {isDraggable && (
-             <div className="pt-2.5 cursor-grab active:cursor-grabbing text-[#48484A] hover:text-white transition-colors">
-               <GripVertical size={20} />
-             </div>
-          )}
+          {isDraggable && <div className="pt-2.5 cursor-grab active:cursor-grabbing text-[#48484A] hover:text-white transition-colors"><GripVertical size={20} /></div>}
           <div className="flex flex-col gap-1.5 items-center">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isAllDone ? 'bg-[#32D74B] text-black shadow-md' : 'bg-red-600/10 text-red-500'}`}>
-              {isAllDone ? <Check size={18} strokeWidth={4} /> : <Activity size={18} />}
-            </div>
-            {isExpanded && (
-              <div className="flex gap-1.5">
-                <button
-                  onClick={(e) => { e.stopPropagation(); onChange({ isSettingsOpen: !block.isSettingsOpen }); }}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 ${block.isSettingsOpen ? 'bg-[#32D74B] text-black shadow-md' : 'bg-[#32D74B]/10 text-[#32D74B]'}`}
-                >
-                  <Settings2 size={18} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setNameEditTrigger(v => v + 1); }}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 bg-white/5 text-white border border-white/10"
-                  title="Редактировать название"
-                >
-                  <Pencil size={16} />
-                </button>
-              </div>
-            )}
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isAllDone ? 'bg-[#32D74B] text-black shadow-md' : 'bg-red-600/10 text-red-500'}`}>{isAllDone ? <Check size={18} strokeWidth={4} /> : <Activity size={18} />}</div>
+            {isExpanded && <div className="flex gap-1.5"><button onClick={(e) => { e.stopPropagation(); onChange({ isSettingsOpen: !block.isSettingsOpen }); }} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${block.isSettingsOpen ? 'bg-[#32D74B] text-black shadow-md' : 'bg-[#32D74B]/10 text-[#32D74B]'}`}><Settings2 size={18} /></button><button onClick={(e) => { e.stopPropagation(); setNameEditTrigger(v => v + 1); }} className="w-10 h-10 rounded-xl flex items-center justify-center transition-all bg-white/5 text-white border border-white/10"><Pencil size={16} /></button></div>}
           </div>
-
-          <div className="flex-1 min-0 flex flex-col h-10 justify-end">
-             <div className="flex items-baseline overflow-hidden pb-0.5">
-               <SmartInput
-                 value={block.name}
-                 defaultValue="Новое упражнение"
-                 onClick={(e) => e.stopPropagation()}
-                 onChange={(e) => onChange({ name: e.target.value })}
-                 allowInlineEdit={false}
-                 editTrigger={nameEditTrigger}
-                 className="font-black text-white outline-none flex-1 min-w-0 bg-transparent truncate text-xl uppercase italic tracking-tighter"
-                 placeholder="Exercise Name"
-               />
-             </div>
-          </div>
+          <div className="flex-1 min-0 flex flex-col h-10 justify-end"><div className="flex items-baseline overflow-hidden pb-0.5"><SmartInput value={block.name} defaultValue="Новое упражнение" onClick={(e) => e.stopPropagation()} onChange={(e) => onChange({ name: e.target.value })} allowInlineEdit={false} editTrigger={nameEditTrigger} className="font-black text-white outline-none flex-1 min-w-0 bg-transparent truncate text-xl uppercase italic tracking-tighter" placeholder="Exercise Name" /></div></div>
         </div>
         <div className="w-6" />
       </div>
 
       {isExpanded && (
         <div className="p-3.5 pt-0 space-y-4">
-          {block.isSettingsOpen && (
-            <div className="bg-black/40 rounded-[20px] p-3 space-y-3 border border-white/5 animate-in fade-in slide-in-from-top-2">
-              <div className="flex gap-2">
-                <button onClick={() => openModal('Пауза', QUICK_TIME, block.restTime, (v) => onChange({ restTime: v }), false)} className="flex-1 py-2 rounded-xl text-[9px] font-black uppercase bg-black/30 text-orange-500 border border-orange-500/20">Rest: {block.restTime}</button>
-                <button onClick={() => openModal('Внимание', PREP_OPTIONS, block.prepTime, (v) => onChange({ prepTime: v }), false)} className="flex-1 py-2 rounded-xl text-[9px] font-black uppercase bg-black/30 text-red-500 border border-red-500/20">Prep: {block.prepTime}</button>
-              </div>
-              <div className="flex items-center justify-between p-1 px-2">
-                <span className="text-[9px] font-black uppercase text-[#8E8E93] italic tracking-widest">Sets:</span>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => adjustSetsCount(-1)} className="w-8 h-8 bg-[#2C2C2E] rounded-lg flex items-center justify-center active:scale-90"><Minus size={14} /></button>
-                  <span className="font-black text-white text-base w-5 text-center italic tabular-nums">{block.setsData.length}</span>
-                  <button onClick={() => adjustSetsCount(1)} className="w-8 h-8 bg-[#32D74B]/20 text-[#32D74B] rounded-lg flex items-center justify-center active:scale-90 border border-[#32D74B]/20"><Plus size={14} /></button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!isSessionActive ? (
-            <div className="overflow-x-auto no-scrollbar -mx-3 px-3">
-               <div className="flex gap-4 min-w-max pb-2">
-                  {block.setsData.map((set, sIdx) => {
-                    const isHighlighted = activeSetIdx === sIdx;
-                    const isDone = set.completed;
-                    const isFuture = sIdx > activeSetIdx && activeSetIdx !== -1;
-                    const isTime = block.mode === 'time';
-                    return (
-                      <div key={set.id} className={`flex flex-col gap-2.5 min-w-[110px]`}>
-                         <span className={`text-[9px] font-black uppercase text-center italic tracking-widest transition-colors ${!isSessionActive ? 'text-[#48484A]' : (isDone ? 'text-[#32D74B]' : (isHighlighted ? 'text-red-500' : 'text-[#48484A]'))}`}>Set {sIdx + 1}</span>
-                         <div className="flex items-center gap-1.5 h-12">
-                            {sIdx === 0 && (
-                              <button onClick={toggleMode} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${isTime ? 'bg-orange-500 text-black shadow-md' : 'bg-white/5 text-orange-500 border border-white/5'}`}>
-                                {isTime ? <Timer size={18} /> : <Hash size={18} />}
-                              </button>
-                            )}
-                            <SwipeableCell isSessionActive={isSessionActive} canSwipe={isTime} isDone={isDone} onSwipeRight={() => triggerTimer(set.value, 'work', block.name, { kind: 'completeSet', blockId: block.id, setIdx: sIdx }, block.prepTime)} isHighlighted={isHighlighted}>
-                              <div onClick={() => !isDone && openModal(block.mode === 'reps' ? 'REPS' : 'TIME', block.mode === 'reps' ? QUICK_REPS : QUICK_TIME, set.value, (v, weight) => {
-                                const next = [...block.setsData]; next[sIdx] = {...next[sIdx], value: v, weight: weight}; onChange({setsData: next});
-                              }, true, set.weight)} className={`h-full flex flex-col items-center justify-center cursor-pointer transition-colors ${isDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
-                                 <span className={`font-black text-base tabular-nums italic transition-colors ${isDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{set.value}{isTime && !set.value.toString().includes('s') ? 's' : ''}</span>
-                                 {parseFloat(set.weight) > 0 && <span className={`text-[7px] font-black mt-0.5 italic text-red-500 uppercase transition-opacity ${isSessionActive && !isHighlighted && !isDone ? 'opacity-30' : 'opacity-100'}`}>{set.weight} kg</span>}
-                              </div>
-                            </SwipeableCell>
-                         </div>
-                         <button
-                           disabled={!isSessionActive || (isFuture && !isDone)}
-                           onClick={() => toggleSetComplete(sIdx, { goNext: true })}
-                           className={`w-full h-10 rounded-[16px] flex items-center justify-center transition-all relative
-                             ${isDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' :
-                               (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset shadow-[0_0_10px_rgba(255,59,48,0.2)] opacity-100 active:scale-95' :
-                               'bg-black/40 border border-white/10 text-white/20'}
-                             ${(!isSessionActive || (isFuture && !isDone)) ? 'cursor-not-allowed' : ''}`}
-                         >
-                           {isDone ? <Check size={24} className="stroke-[4px]" /> :
-                            (!isSessionActive) ? <Lock size={14} className="opacity-40" /> :
-                            (isFuture) ? <Lock size={14} className="opacity-20" /> :
-                            <Check size={24} className={isHighlighted ? 'opacity-100' : 'opacity-20'} />}
-                         </button>
-                      </div>
-                    );
-                  })}
-               </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-                {block.setsData.map((set, sIdx) => {
-                  const isDone = set.completed;
-                  const isActiveTab = sIdx === safeFocusedSetIdx;
-                  return (
-                    <button
-                      key={set.id}
-                      onClick={() => {
-                        setFocusedSetIdx(sIdx);
-                        if (!isTimerActive) setIsFocusFullscreen(true);
-                      }}
-                      className={`min-w-[82px] h-8 px-2 rounded-t-xl border-t-2 border-x-2 font-black text-[11px] uppercase italic tracking-wide transition-all ${isDone ? 'border-[#32D74B] text-[#32D74B] bg-[#32D74B]/10' : isActiveTab ? 'border-red-500 text-red-500 bg-red-500/10' : 'border-white/15 text-[#8E8E93] bg-black/25'}`}
-                    >
-                      Set {sIdx + 1}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {isFocusFullscreen && focusedSet && renderFocusedSetCard()}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable, isTimerActive, goToNextExercise = () => {}, timerCompletion = null, onTimerCompletionHandled = () => {} }) {
-  const [nameEditTrigger, setNameEditTrigger] = useState(0);
-  const [focusedRoundIdx, setFocusedRoundIdx] = useState(0);
-  const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
-  const [startedFromFocus, setStartedFromFocus] = useState(false);
-  const [focusDismissedManually, setFocusDismissedManually] = useState(false);
-  const [roundFlowState, setRoundFlowState] = useState({});
-  const isBlockDone = block.completedRounds?.length === block.rounds;
-  const activeRoundIdx = Array.from({ length: block.rounds }).findIndex((_, i) => !(block.completedRounds || []).includes(i));
-  const safeFocusedRoundIdx = Math.min(Math.max(focusedRoundIdx, 0), Math.max(block.rounds - 1, 0));
-  const focusedRoundDone = (block.completedRounds || []).includes(safeFocusedRoundIdx);
-  const timedExerciseIndexes = (block.exercises || [])
-    .map((ex, idx) => (ex.mode === 'time' ? idx : -1))
-    .filter((idx) => idx !== -1);
-  const roundExerciseCompletion = Array.isArray(block.roundExerciseCompletion) ? block.roundExerciseCompletion : [];
-
-  const updateRoundExerciseCompletion = (roundIdx, updater) => {
-    const nextCompletion = [...roundExerciseCompletion];
-    const currentRoundCompletion = { ...(nextCompletion[roundIdx] || {}) };
-    nextCompletion[roundIdx] = updater(currentRoundCompletion);
-    onChange({ roundExerciseCompletion: nextCompletion });
-  };
-
-  useEffect(() => {
-    if (!isSessionActive) return;
-    if (activeRoundIdx >= 0) setFocusedRoundIdx(activeRoundIdx);
-  }, [activeRoundIdx, isSessionActive]);
-
-  useEffect(() => {
-    if (!isSessionActive || !isExpanded) return;
-    setFocusedRoundIdx(activeRoundIdx >= 0 ? activeRoundIdx : 0);
-  }, [isSessionActive, isExpanded, activeRoundIdx]);
-
-  useEffect(() => {
-    if (!isSessionActive || !isExpanded) {
-      setIsFocusFullscreen(false);
-      setStartedFromFocus(false);
-      setFocusDismissedManually(false);
-    }
-  }, [isSessionActive, isExpanded]);
-
-  useEffect(() => {
-    if (!isSessionActive) {
-      setRoundFlowState({});
-      return;
-    }
-    setRoundFlowState((prev) => {
-      const next = {};
-      for (let rIdx = 0; rIdx < block.rounds; rIdx++) {
-        if ((block.completedRounds || []).includes(rIdx)) continue;
-        const firstTimedIdx = timedExerciseIndexes[0] ?? -1;
-        const current = prev[rIdx];
-        next[rIdx] = {
-          nextTimedIdx: current?.nextTimedIdx ?? firstTimedIdx,
-          awaitingConfirm: current?.awaitingConfirm ?? false
-        };
-      }
-      return next;
-    });
-  }, [isSessionActive, block.rounds, block.completedRounds, timedExerciseIndexes.join(',')]);
-
-  const goToNextRoundOrExercise = (rIdx) => {
-    const nextRoundIdx = Array.from({ length: block.rounds }).findIndex((_, idx) => idx > rIdx && !(block.completedRounds || []).includes(idx));
-    if (nextRoundIdx !== -1) {
-      setFocusedRoundIdx(nextRoundIdx);
-      setIsFocusFullscreen(true);
-      setFocusDismissedManually(false);
-      return;
-    }
-    goToNextExercise(block.id, { setIdx: 0, fullscreen: true });
-  };
-
-  const goAfterRound = (rIdx) => {
-    goToNextRoundOrExercise(rIdx);
-  };
-
-  const toggleRoundComplete = (rIdx, options = {}) => {
-    const { goNext = false } = options;
-    if (!isSessionActive || (rIdx !== activeRoundIdx && !(block.completedRounds || []).includes(rIdx))) return;
-    const isCompleted = (block.completedRounds || []).includes(rIdx);
-    if (isCompleted) {
-      setRoundFlowState((prev) => {
-        const firstTimedIdx = timedExerciseIndexes[0] ?? -1;
-        return { ...prev, [rIdx]: { nextTimedIdx: firstTimedIdx, awaitingConfirm: false } };
-      });
-      openConfirm('Сбросить круг?', () => {
-        const nextCompletion = [...roundExerciseCompletion];
-        nextCompletion[rIdx] = {};
-        onChange({
-          completedRounds: block.completedRounds.filter(r => r !== rIdx),
-          roundExerciseCompletion: nextCompletion
-        });
-      }, 'Сброс');
-    } else {
-      setRoundFlowState((prev) => {
-        const next = { ...prev };
-        delete next[rIdx];
-        return next;
-      });
-      onChange({ completedRounds: [...(block.completedRounds || []), rIdx] });
-      if (block.restTime !== '0s') {
-        triggerTimer(block.restTime || '60s', 'rest', '', goNext ? { kind: 'afterRest', blockId: block.id, action: 'nextRoundOrExercise', roundIdx: rIdx } : null);
-      } else if (goNext) {
-        goAfterRound(rIdx);
-      }
-    }
-  };
-
-  const handleTimedExerciseFinished = (roundIdx, exIdx) => {
-    const timedExercise = block.exercises?.[exIdx];
-    if (!timedExercise) return;
-    onChange({ exerciseCompletions: setExerciseCompletion(roundIdx, timedExercise.id, true) });
-    const followingTimedIdx = timedExerciseIndexes.find((idx) => idx > exIdx);
-    const hasNonTimedExercises = (block.exercises || []).some((exercise) => exercise.mode !== 'time');
-    if (followingTimedIdx !== undefined) {
-      if (followingTimedIdx === exIdx + 1) {
-        const nextExercise = block.exercises?.[followingTimedIdx];
-        const timedValue = block.values[roundIdx]?.[nextExercise.id]?.value || '10s';
-        triggerTimer(timedValue, 'work', nextExercise.name || block.name, { kind: 'timedExerciseFinished', blockId: block.id, roundIdx, exIdx: followingTimedIdx }, block.prepTime || '0s');
-        return;
-      }
-      setRoundFlowState((prev) => ({
-        ...prev,
-        [roundIdx]: { nextTimedIdx: followingTimedIdx, awaitingConfirm: false }
-      }));
-      return;
-    }
-
-    if (hasNonTimedExercises) {
-      setRoundFlowState((prev) => ({
-        ...prev,
-        [roundIdx]: { nextTimedIdx: -1, awaitingConfirm: true }
-      }));
-      if (startedFromFocus && !focusDismissedManually) {
-        setIsFocusFullscreen(true);
-      }
-      setStartedFromFocus(false);
-      return;
-    }
-
-    setStartedFromFocus(false);
-    toggleRoundComplete(roundIdx, { goNext: true });
-  };
-
-  useEffect(() => {
-    if (!timerCompletion || timerCompletion.action?.blockId !== block.id) return;
-    const action = timerCompletion.action;
-    if (action.kind === 'timedExerciseFinished') {
-      handleTimedExerciseFinished(action.roundIdx, action.exIdx);
-      onTimerCompletionHandled();
-      return;
-    }
-    if (action.kind === 'afterRest' && action.action === 'nextRoundOrExercise') {
-      goAfterRound(action.roundIdx);
-      onTimerCompletionHandled();
-    }
-  }, [timerCompletion, block.id]);
-
-  const adjustRounds = (delta) => {
-    const nextCount = Math.max(1, block.rounds + delta);
-    if (nextCount === block.rounds) return;
-    let newValues = [...block.values];
-    if (delta > 0) {
-      for(let i = 0; i < delta; i++) {
-        const roundMap = {};
-        block.exercises.forEach(ex => roundMap[ex.id] = { value: '10', weight: '0' });
-        newValues.push(roundMap);
-      }
-    } else {
-      newValues = newValues.slice(0, nextCount);
-    }
-    onChange({
-      rounds: nextCount,
-      values: newValues,
-      completedRounds: (block.completedRounds || []).filter(r => r < nextCount),
-      roundExerciseCompletion: roundExerciseCompletion.slice(0, nextCount)
-    });
-  };
-
-  const adjustExerciseCount = (delta) => {
-    const nextCount = Math.max(1, block.exercises.length + delta);
-    if (nextCount === block.exercises.length) return;
-    if (delta > 0) {
-      const newExId = generateId();
-      const newExercises = [...block.exercises, { id: newExId, name: 'Отжимания', mode: 'reps' }];
-      const newValues = block.values.map(v => ({ ...v, [newExId]: { value: '10', weight: '0' } }));
-      onChange({ exercises: newExercises, values: newValues });
-    } else {
-      const lastExId = block.exercises[block.exercises.length - 1].id;
-      const newExercises = block.exercises.slice(0, -1);
-      const newValues = block.values.map(v => {
-        const nextV = { ...v };
-        delete nextV[lastExId];
-        return nextV;
-      });
-      const nextCompletion = roundExerciseCompletion.map((roundMap) => {
-        const updatedRoundMap = { ...(roundMap || {}) };
-        delete updatedRoundMap[lastExId];
-        return updatedRoundMap;
-      });
-      onChange({ exercises: newExercises, values: newValues, roundExerciseCompletion: nextCompletion });
-    }
-  };
-
-  const toggleExerciseMode = (exId) => {
-    const targetEx = block.exercises.find(e => e.id === exId);
-    if (!targetEx) return;
-    const newMode = targetEx.mode === 'reps' ? 'time' : 'reps';
-    const nextExercises = block.exercises.map(e => e.id === exId ? { ...e, mode: newMode } : e);
-    const nextValues = block.values.map(roundMap => {
-      const cell = roundMap[exId] || { value: '10', weight: '0' };
-      let val = cell.value.toString().replace(/[sm]/g, '');
-      if (newMode === 'time' && !isNaN(val) && val !== "") val = val + 's';
-      return { ...roundMap, [exId]: { ...cell, value: val } };
-    });
-    onChange({ exercises: nextExercises, values: nextValues });
-  };
-
-  const renderFocusedRoundCard = () => {
-    const canEditRound = !focusedRoundDone;
-    const hasTimedExercises = timedExerciseIndexes.length > 0;
-    const roundState = roundFlowState[safeFocusedRoundIdx] || {
-      nextTimedIdx: timedExerciseIndexes[0] ?? -1,
-      awaitingConfirm: false
-    };
-    const isAwaitingRoundConfirm = roundState.awaitingConfirm;
-    const nextTimedIdx = roundState.nextTimedIdx;
-
-    const runTimedExercise = (roundIdx, exIdx) => {
-      const timedExercise = block.exercises?.[exIdx];
-      if (!timedExercise) return;
-      const timedValue = block.values[roundIdx]?.[timedExercise.id]?.value || '10s';
-
-      triggerTimer(
-        timedValue,
-        'work',
-        timedExercise.name || block.name,
-        { kind: 'timedExerciseFinished', blockId: block.id, roundIdx, exIdx },
-        block.prepTime || '0s'
-      );
-    };
-
-    const handleFocusedRoundAction = () => {
-      if (focusedRoundDone) {
-        toggleRoundComplete(safeFocusedRoundIdx);
-        return;
-      }
-      if (hasTimedExercises) {
-        if (isAwaitingRoundConfirm || nextTimedIdx === -1) {
-          toggleRoundComplete(safeFocusedRoundIdx, { goNext: true });
-          return;
-        }
-        const completedRepExerciseIdsBeforeTimed = (block.exercises || [])
-          .slice(0, nextTimedIdx)
-          .filter((exercise) => exercise.mode === 'reps')
-          .map((exercise) => exercise.id);
-        if (completedRepExerciseIdsBeforeTimed.length) {
-          updateRoundExerciseCompletion(safeFocusedRoundIdx, (currentRoundCompletion) => {
-            const nextRoundCompletion = { ...currentRoundCompletion };
-            completedRepExerciseIdsBeforeTimed.forEach((exerciseId) => {
-              nextRoundCompletion[exerciseId] = true;
-            });
-            return nextRoundCompletion;
-          });
-        }
-        setStartedFromFocus(isFocusFullscreen && !focusDismissedManually);
-        runTimedExercise(safeFocusedRoundIdx, nextTimedIdx);
-        return;
-      }
-      toggleRoundComplete(safeFocusedRoundIdx, { goNext: true });
-    };
-
-    return (
-      <div className="fixed inset-0 z-[220] bg-[#2A2424] text-white flex flex-col items-center justify-center p-6">
-        <button
-          onClick={() => {
-            setFocusDismissedManually(true);
-            setIsFocusFullscreen(false);
-          }}
-          className="absolute top-6 right-6 w-12 h-12 rounded-full bg-black/25 text-white/80 flex items-center justify-center active:scale-95"
-          title="Закрыть фокус"
-        >
-          <X size={22} />
-        </button>
-
-        <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2 italic">ФОКУС</span>
-        <div className="text-2xl font-black uppercase italic tracking-wide mb-2 text-center">{block.name}</div>
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
-          {Array.from({ length: block.rounds }).map((_, rIdx) => {
-            const isActiveRound = rIdx === safeFocusedRoundIdx;
-            return (
-              <button
-                key={`focus-round-${rIdx}`}
-                onClick={() => setFocusedRoundIdx(rIdx)}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-black uppercase italic tracking-[0.08em] transition-all active:scale-95 ${
-                  isActiveRound ? 'bg-white text-[#2A2424]' : 'bg-black/25 border border-white/20 text-white/85'
-                }`}
-              >
-                {`round ${rIdx + 1}`}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="w-full max-w-sm space-y-3 mb-10">
-          {(block.exercises || []).map((ex) => {
-            const cellData = block.values[safeFocusedRoundIdx]?.[ex.id] || { value: '10', weight: '0' };
-            const val = cellData.value || '10';
-            const wt = cellData.weight || '0';
-            const isTime = ex.mode === 'time';
-            const isExerciseCompleted = !!roundExerciseCompletion[safeFocusedRoundIdx]?.[ex.id];
-            return (
-              <button
-                key={`focus-ex-${ex.id}`}
-                onClick={() => canEditRound && openModal(ex.name || 'Exercise', isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
-                  const nextValues = [...block.values];
-                  nextValues[safeFocusedRoundIdx] = { ...nextValues[safeFocusedRoundIdx], [ex.id]: { value: v, weight: weight } };
-                  onChange({
-                    values: nextValues,
-                    exerciseCompletions: setExerciseCompletion(safeFocusedRoundIdx, ex.id, false)
-                  });
-                }, true, wt)}
-                className={`w-full rounded-2xl p-4 border transition-all text-left ${
-                  focusedRoundDone || isExerciseCompleted
-                    ? 'bg-[#32D74B]/10 border-[#32D74B]/40'
-                    : 'bg-black/25 border-white/10 active:scale-[0.99]'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3 mb-1">
-                  <div className="text-[10px] font-black uppercase italic tracking-widest text-[#8E8E93] truncate">{ex.name}</div>
-                  {isExerciseCompleted && !focusedRoundDone && (
-                    <Check size={14} className="text-[#32D74B] shrink-0" />
-                  )}
-                </div>
-                <div className="flex items-end gap-2">
-                  <span className={`font-black text-4xl tabular-nums italic ${focusedRoundDone || isExerciseCompleted ? 'text-[#32D74B]' : 'text-white'}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
-                  {parseFloat(wt) > 0 && <span className="text-[11px] font-black mb-1 italic uppercase text-red-500">{wt} kg</span>}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          onClick={handleFocusedRoundAction}
-          className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-95 ${focusedRoundDone ? 'bg-[#32D74B]' : 'bg-black/35'}`}
-        >
-          {focusedRoundDone ? (
-            <Check size={40} className="text-black stroke-[3px]" />
-          ) : hasTimedExercises && !isAwaitingRoundConfirm ? (
-            <Play size={38} className="text-white fill-white translate-x-[2px]" />
-          ) : (
-            <Check size={40} className="text-white" />
-          )}
-        </button>
-      </div>
-    );
-  };
-
-  return (
-    <div className={`rounded-[28px] transition-all duration-300 overflow-hidden relative ${isExpanded ? 'bg-[#2A2424] shadow-lg' : 'bg-[#2C2C2E] border border-red-500/20'}`}>
-
-      {!isSessionActive && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          className="absolute top-2 right-2 p-2.5 text-[#48484A] hover:text-red-500 active:scale-90 transition-all z-[20]"
-        >
-          <Trash2 size={20} />
-        </button>
-      )}
-
-      <div onClick={onToggle} className="flex items-center justify-between p-3.5 cursor-pointer">
-        <div className="flex items-start gap-3.5 flex-1 overflow-hidden">
-          {isDraggable && (
-             <div className="pt-2.5 cursor-grab active:cursor-grabbing text-[#48484A] hover:text-white transition-colors">
-               <GripVertical size={20} />
-             </div>
-          )}
-          <div className="flex flex-col gap-1.5 items-center">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isBlockDone ? 'bg-[#32D74B] text-black shadow-md' : 'bg-red-600 text-white shadow-md'}`}>
-              <Repeat size={18} />
-            </div>
-            {isExpanded && (
-              <div className="flex gap-1.5">
-                <button
-                  onClick={(e) => { e.stopPropagation(); onChange({ isSettingsOpen: !block.isSettingsOpen }); }}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 ${block.isSettingsOpen ? 'bg-[#32D74B] text-black shadow-md' : 'bg-[#32D74B]/10 text-[#32D74B]'}`}
-                >
-                  <Settings2 size={18} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setNameEditTrigger(v => v + 1); }}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center transition-all animate-in zoom-in-50 duration-200 bg-white/5 text-white border border-white/10"
-                  title="Редактировать название"
-                >
-                  <Pencil size={16} />
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 min-0 flex flex-col h-10 justify-end">
-             <div className="flex items-baseline overflow-hidden pb-0.5">
-               <SmartInput
-                 value={block.name}
-                 defaultValue="Новый суперсет"
-                 onClick={(e) => e.stopPropagation()}
-                 onChange={(e) => onChange({ name: e.target.value })}
-                 allowInlineEdit={false}
-                 editTrigger={nameEditTrigger}
-                 className="font-black text-white outline-none flex-1 min-w-0 bg-transparent truncate text-xl uppercase italic tracking-tighter"
-                 placeholder="Superset Name"
-               />
-             </div>
-          </div>
-        </div>
-        <div className="w-6" />
-      </div>
-
-      {isExpanded && (
-        <div className="p-3.5 pt-0 space-y-3.5">
-          {block.isSettingsOpen && (
-            <div className="bg-black/40 rounded-[20px] p-3 space-y-3 border border-red-500/10 animate-in fade-in slide-in-from-top-2">
-              <div className="flex gap-2">
-                <button onClick={() => openModal('Пауза', QUICK_TIME, block.restTime, (v) => onChange({ restTime: v }), false)} className="flex-1 py-2 rounded-xl text-[9px] font-black uppercase bg-black/30 text-orange-500 border border-orange-500/20">Rest: {block.restTime}</button>
-                <button onClick={() => openModal('Внимание', PREP_OPTIONS, block.prepTime, (v) => onChange({ prepTime: v }), false)} className="flex-1 py-2 rounded-xl text-[9px] font-black uppercase bg-black/30 text-red-500 border border-red-500/20">Prep: {block.prepTime}</button>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[9px] font-black uppercase italic text-[#8E8E93] tracking-widest">Rounds:</span>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => adjustRounds(-1)} className="w-8 h-8 bg-[#2C2C2E] rounded-lg flex items-center justify-center text-white"><Minus size={14} /></button>
-                    <span className="font-black text-white text-base w-5 text-center italic tabular-nums">{block.rounds}</span>
-                    <button onClick={() => adjustRounds(1)} className="w-8 h-8 bg-[#32D74B]/20 text-[#32D74B] rounded-lg flex items-center justify-center border border-[#32D74B]/20"><Plus size={14} /></button>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[9px] font-black uppercase italic text-[#8E8E93] tracking-widest">Exercises:</span>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => adjustExerciseCount(-1)} className="w-8 h-8 bg-[#2C2C2E] rounded-lg flex items-center justify-center text-white"><Minus size={14} /></button>
-                    <span className="font-black text-white text-base w-5 text-center italic tabular-nums">{block.exercises.length}</span>
-                    <button onClick={() => adjustExerciseCount(1)} className="w-8 h-8 bg-[#32D74B]/20 text-[#32D74B] rounded-lg flex items-center justify-center border border-[#32D74B]/20"><Plus size={14} /></button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!isSessionActive ? (
-            <div className="overflow-x-auto no-scrollbar -mx-4 px-4 pt-1">
-              <div className="flex gap-4 min-w-max pb-2">
-                {Array.from({ length: block.rounds }).map((_, rIdx) => {
-                  const isRoundDone = (block.completedRounds || []).includes(rIdx);
-                  const isHighlighted = activeRoundIdx === rIdx;
-                  const isFuture = rIdx > activeRoundIdx && activeRoundIdx !== -1;
-                  return (
-                    <div key={rIdx} className={`flex flex-col gap-5 min-w-[130px]`}>
-                      <span className={`text-[10px] font-black uppercase text-center italic tracking-widest transition-colors ${!isSessionActive ? 'text-[#48484A]' : (isRoundDone ? 'text-[#32D74B]' : (isHighlighted ? 'text-red-500' : 'text-[#48484A]'))}`}>Round {rIdx + 1}</span>
-                      <div className="flex flex-col gap-4">
-                        {block.exercises?.map((ex) => {
-                          const cellData = block.values[rIdx]?.[ex.id] || { value: '10', weight: '0' };
-                          const val = cellData.value || '10';
-                          const wt = cellData.weight || '0';
-                          const isTime = ex.mode === 'time';
-                          return (
-                            <div key={ex.id} className="space-y-1.5">
-                              <SmartInput
-                                value={ex.name}
-                                defaultValue="Новое упр"
-                                onChange={(e) => onChange({ exercises: block.exercises.map(e_ => e_.id === ex.id ? { ...e_, name: e.target.value } : e_) })}
-                                className={`text-[8px] font-black transition-colors truncate uppercase bg-transparent outline-none w-full italic focus:text-red-500 ${isSessionActive && isHighlighted ? 'text-[#8E8E93]' : (isSessionActive ? 'text-[#48484A]' : 'text-[#8E8E93]')}`}
-                                placeholder="Exercise"
-                              />
-                              <div className="flex items-center gap-1.5 h-12">
-                                 {rIdx === 0 && (
-                                    <button onClick={() => toggleExerciseMode(ex.id)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${isTime ? 'bg-orange-500 text-black shadow-md' : 'bg-white/5 text-orange-500 border border-white/5'}`}>
-                                      {isTime ? <Timer size={18} /> : <Hash size={18} />}
-                                    </button>
-                                 )}
-                                  <SwipeableCell isSessionActive={isSessionActive} canSwipe={isTime} isDone={isRoundDone} onSwipeRight={() => triggerTimer(val, 'work', ex.name, null, block.prepTime)} isHighlighted={isHighlighted}>
-                                    <div onClick={() => !isRoundDone && openModal('Round '+(rIdx+1), isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
-                                      let nv = [...block.values];
-                                      nv[rIdx] = { ...nv[rIdx], [ex.id]: { value: v, weight: weight } };
-                                      onChange({
-                                        values: nv,
-                                        exerciseCompletions: setExerciseCompletion(rIdx, ex.id, false)
-                                      });
-                                    }, true, wt)} className={`h-full flex flex-col items-center justify-center transition-colors ${isRoundDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
-                                      <span className={`font-black text-base tabular-nums italic transition-colors ${isRoundDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
-                                      {parseFloat(wt) > 0 && <span className={`text-[7px] font-black mt-0.5 italic uppercase text-red-500 transition-opacity ${isSessionActive && !isHighlighted && !isRoundDone ? 'opacity-30' : 'opacity-100'}`}>{wt} kg</span>}
-                                    </div>
-                                  </SwipeableCell>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="pt-2 mt-auto border-t border-white/10">
-                        <button
-                          disabled={!isSessionActive || (isFuture && !isRoundDone)}
-                          onClick={() => toggleRoundComplete(rIdx, { goNext: true })}
-                          className={`w-full h-11 rounded-[16px] flex items-center justify-center transition-all relative
-                            ${isRoundDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' :
-                              (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset shadow-[0_0_15px_rgba(255,59,48,0.2)] opacity-100 active:scale-95' :
-                              'bg-black/40 border border-white/10 text-white/20'}
-                            ${(!isSessionActive || (isFuture && !isRoundDone)) ? 'cursor-not-allowed' : ''}`}
-                        >
-                           {isRoundDone ? <Check size={26} className="stroke-[4px]" /> :
-                            (!isSessionActive) ? <Lock size={16} className="opacity-40" /> :
-                            (isFuture) ? <Lock size={16} className="opacity-20" /> :
-                            <Check size={26} className={isHighlighted ? 'opacity-100' : 'opacity-20'} />}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-                {Array.from({ length: block.rounds }).map((_, rIdx) => {
-                  const isDone = (block.completedRounds || []).includes(rIdx);
-                  const isActiveTab = rIdx === safeFocusedRoundIdx;
-                  return (
-                    <button
-                      key={`superset-round-tab-${rIdx}`}
-                      onClick={() => {
-                        setFocusedRoundIdx(rIdx);
-                        setFocusDismissedManually(false);
-                        if (!isTimerActive) setIsFocusFullscreen(true);
-                      }}
-                      className={`min-w-[92px] h-8 px-2 rounded-t-xl border-t-2 border-x-2 font-black text-[11px] uppercase italic tracking-wide transition-all ${isDone ? 'border-[#32D74B] text-[#32D74B] bg-[#32D74B]/10' : isActiveTab ? 'border-red-500 text-red-500 bg-red-500/10' : 'border-white/15 text-[#8E8E93] bg-black/25'}`}
-                    >
-                      Round {rIdx + 1}
-                    </button>
-                  );
-                })}
-              </div>
-              {isFocusFullscreen && renderFocusedRoundCard()}
-            </div>
-          )}
+          {block.isSettingsOpen && <div className="bg-black/40 rounded-[20px] p-3 space-y-3 border border-white/5"><div className="flex gap-2"><button onClick={() => openModal('Пауза', QUICK_TIME, block.rest || '60s', (v) => onChange({ rest: v }), false)} className="flex-1 py-2 rounded-xl text-[9px] font-black uppercase bg-black/30 text-orange-500 border border-orange-500/20">Rest: {block.rest || '60s'}</button><button onClick={() => openModal('Внимание', PREP_OPTIONS, block.prep || '5s', (v) => onChange({ prep: v }), false)} className="flex-1 py-2 rounded-xl text-[9px] font-black uppercase bg-black/30 text-red-500 border border-red-500/20">Prep: {block.prep || '5s'}</button></div><div className="flex items-center justify-between p-1 px-2"><span className="text-[9px] font-black uppercase text-[#8E8E93] italic tracking-widest">Steps:</span><div className="flex items-center gap-3"><button onClick={() => adjustStepsCount(-1)} className="w-8 h-8 bg-[#2C2C2E] rounded-lg flex items-center justify-center active:scale-90"><Minus size={14} /></button><span className="font-black text-white text-base w-5 text-center italic tabular-nums">{steps.length}</span><button onClick={() => adjustStepsCount(1)} className="w-8 h-8 bg-[#32D74B]/20 text-[#32D74B] rounded-lg flex items-center justify-center active:scale-90 border border-[#32D74B]/20"><Plus size={14} /></button></div></div></div>}
+          <div className="overflow-x-auto no-scrollbar -mx-3 px-3"><div className="flex gap-4 min-w-max pb-2">{steps.map((step, sIdx) => { const isHighlighted = activeStepIdx === sIdx; const isDone = step.completed; const isFuture = sIdx > activeStepIdx && activeStepIdx !== -1; const isTime = step.type === 'time'; return <div key={step.id} className="flex flex-col gap-2.5 min-w-[120px]"><span className={`text-[9px] font-black uppercase text-center italic tracking-widest transition-colors ${!isSessionActive ? 'text-[#48484A]' : (isDone ? 'text-[#32D74B]' : (isHighlighted ? 'text-red-500' : 'text-[#48484A]'))}`}>{step.groupId ? `${step.groupId}` : `Step ${sIdx + 1}`}</span><div className="flex items-center gap-1.5 h-12"><SwipeableCell isSessionActive={isSessionActive} canSwipe={isTime} isDone={isDone} onSwipeRight={() => triggerTimer(step.value, 'work', step.name || block.name, () => toggleStepComplete(sIdx, { onRestComplete: goToNextStepOrExercise }), block.prep || '0s')} isHighlighted={isHighlighted}><div onClick={() => !isDone && openModal(step.type === 'reps' ? 'REPS' : 'TIME', step.type === 'reps' ? QUICK_REPS : QUICK_TIME, step.value, (v, weight) => { const next = [...steps]; next[sIdx] = { ...next[sIdx], value: v, weight: weight }; onChange({ steps: next }); }, true, step.weight || '0')} className={`h-full flex flex-col items-center justify-center cursor-pointer transition-colors ${isDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}><span className={`font-black text-base tabular-nums italic transition-colors ${isDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{step.value}</span>{parseFloat(step.weight || '0') > 0 && <span className="text-[7px] font-black mt-0.5 italic uppercase text-red-500">{step.weight} kg</span>}</div></SwipeableCell></div><button disabled={!isSessionActive || (isFuture && !isDone)} onClick={() => toggleStepComplete(sIdx, { onRestComplete: goToNextStepOrExercise })} className={`w-full h-11 rounded-[16px] flex items-center justify-center transition-all ${isDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' : (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset opacity-100 active:scale-95' : 'bg-black/40 border border-white/10 text-white/20'} ${(!isSessionActive || (isFuture && !isDone)) ? 'cursor-not-allowed' : ''}`}>{isDone ? <Check size={26} className="stroke-[4px]" /> : (!isSessionActive || isFuture) ? <Lock size={16} className="opacity-40" /> : <Check size={26} className={isHighlighted ? 'opacity-100' : 'opacity-20'} />}</button></div>; })}</div></div>
+          {isSessionActive && isFocusFullscreen && focusedStep && <div className="fixed inset-0 z-[220] bg-[#FF3B30] text-white flex flex-col items-center justify-center p-6"><button onClick={() => setIsFocusFullscreen(false)} className="absolute top-6 right-6 w-12 h-12 rounded-full bg-black/20 text-white/80 flex items-center justify-center active:scale-95"><X size={22} /></button><span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2 italic">ФОКУС</span><div className="text-2xl font-black uppercase italic tracking-wide mb-2 text-center">{focusedStep.name || block.name}</div><div className="text-9xl font-black tabular-nums tracking-tighter leading-none italic mb-16">{focusedStep.value}</div><button onClick={handleFocusedStepAction} className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-95 ${focusedStep.completed ? 'bg-[#32D74B]' : 'bg-black/30'}`}><Check size={40} className={focusedStep.completed ? 'text-black stroke-[3px]' : 'text-white'} /></button></div>}
         </div>
       )}
     </div>
