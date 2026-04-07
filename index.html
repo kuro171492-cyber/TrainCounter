@@ -845,7 +845,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   const [focusedSetIdx, setFocusedSetIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const lastAutoFocusStartRef = useRef(null);
-  if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} isTimerActive={isTimerActive} />;
+  if (block.type === 'superset') return <SupersetBlock block={block} isExpanded={isExpanded} onToggle={onToggle} onRemove={onRemove} onChange={onChange} openModal={openModal} openConfirm={openConfirm} triggerTimer={triggerTimer} isSessionActive={isSessionActive} isDraggable={isDraggable} isTimerActive={isTimerActive} goToNextExercise={goToNextExercise} />;
 
   const isAllDone = block.setsData?.every(s => s.completed) && block.setsData?.length > 0;
   const activeSetIdx = (block.setsData || []).findIndex(s => !s.completed);
@@ -1190,7 +1190,7 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   );
 }
 
-function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable, isTimerActive }) {
+function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable, isTimerActive, goToNextExercise = () => {} }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedRoundIdx, setFocusedRoundIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
@@ -1217,14 +1217,29 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     if (isTimerActive) setIsFocusFullscreen(false);
   }, [isTimerActive]);
 
-  const toggleRoundComplete = (rIdx) => {
+  const goToNextRoundOrExercise = (rIdx) => {
+    const nextRoundIdx = Array.from({ length: block.rounds }).findIndex((_, idx) => idx > rIdx && !(block.completedRounds || []).includes(idx));
+    if (nextRoundIdx !== -1) {
+      setFocusedRoundIdx(nextRoundIdx);
+      setIsFocusFullscreen(true);
+      return;
+    }
+    goToNextExercise(block.id, { setIdx: 0, fullscreen: true });
+  };
+
+  const toggleRoundComplete = (rIdx, options = {}) => {
+    const { onRestComplete = null } = options;
     if (!isSessionActive || (rIdx !== activeRoundIdx && !(block.completedRounds || []).includes(rIdx))) return;
     const isCompleted = (block.completedRounds || []).includes(rIdx);
     if (isCompleted) {
       openConfirm('Сбросить круг?', () => onChange({ completedRounds: block.completedRounds.filter(r => r !== rIdx) }), 'Сброс');
     } else {
       onChange({ completedRounds: [...(block.completedRounds || []), rIdx] });
-      if (block.restTime !== '0s') triggerTimer(block.restTime || '60s', 'rest');
+      if (block.restTime !== '0s') {
+        triggerTimer(block.restTime || '60s', 'rest', '', onRestComplete);
+      } else if (onRestComplete) {
+        onRestComplete();
+      }
     }
   };
 
@@ -1293,12 +1308,12 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
           timedValue,
           'work',
           focusedTimedExercise.name || block.name,
-          () => toggleRoundComplete(safeFocusedRoundIdx),
+          () => toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) }),
           block.prepTime || '0s'
         );
         return;
       }
-      toggleRoundComplete(safeFocusedRoundIdx);
+      toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) });
     };
 
     return (
@@ -1510,7 +1525,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                       <div className="pt-2 mt-auto border-t border-white/10">
                         <button
                           disabled={!isSessionActive || (isFuture && !isRoundDone)}
-                          onClick={() => toggleRoundComplete(rIdx)}
+                          onClick={() => toggleRoundComplete(rIdx, { onRestComplete: () => goToNextRoundOrExercise(rIdx) })}
                           className={`w-full h-11 rounded-[16px] flex items-center justify-center transition-all relative
                             ${isRoundDone ? 'bg-[#32D74B]/20 text-[#32D74B] ring-2 ring-[#32D74B] ring-inset opacity-100' :
                               (isSessionActive && isHighlighted) ? 'bg-black/50 text-red-500 ring-2 ring-red-500 ring-inset shadow-[0_0_15px_rgba(255,59,48,0.2)] opacity-100 active:scale-95' :
