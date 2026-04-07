@@ -442,7 +442,12 @@ function App() {
   useEffect(() => {
     let interval;
     if (sessionState.dayId) {
-      interval = setInterval(() => setSessionState(prev => ({ ...prev, elapsed: prev.elapsed + 1 })), 1000);
+      interval = setInterval(() => {
+        setSessionState(prev => ({
+          ...prev,
+          elapsed: Math.floor((Date.now() - prev.startTime) / 1000)
+        }));
+      }, 1000);
     }
     return () => clearInterval(interval);
   }, [sessionState.dayId]);
@@ -595,13 +600,12 @@ function App() {
             isSessionActive={sessionState.dayId === activeDayData.id}
             sessionElapsed={sessionState.elapsed}
             sessionStartTime={sessionState.startTime}
-            onStart={(firstExerciseId) => {
-              setSchedule(prev => prev.map(d =>
-                d.id === activeDayData.id
-                  ? { ...d, isCollapsed: false, activeBlockId: firstExerciseId || d.activeBlockId }
-                  : d
-              ));
-              setSessionState({ dayId: activeDayData.id, elapsed: 0, startTime: Date.now() });
+            onStart={(dayId) => {
+              setSessionState({
+                dayId: dayId,
+                elapsed: 0,
+                startTime: Date.now()
+              });
             }}
             onStop={stopSessionAndResetProgress}
             onRemove={() => {
@@ -623,7 +627,7 @@ function App() {
         )}
       </div>
 
-      {sessionState.dayId && isStickyVisible && (
+      {sessionState.dayId !== null && isStickyVisible && (
         <div className="fixed bottom-0 left-0 right-0 z-[150] px-4 pb-6 pt-10 bg-gradient-to-t from-black via-black/95 to-transparent animate-in slide-in-from-bottom duration-300 pointer-events-none">
           <div className="max-w-md mx-auto flex items-center gap-3 bg-[#1C1C1E] p-3 rounded-[24px] border border-red-500/30 shadow-[0_-10px_40px_rgba(255,59,48,0.2)] pointer-events-auto">
             <div className="flex-1 flex flex-col justify-center px-4">
@@ -647,7 +651,7 @@ function App() {
       )}
 
       {/* Floating Action Buttons Area */}
-      <div className={`fixed right-6 z-[160] flex flex-col gap-3 transition-all ${sessionState.dayId && isStickyVisible ? 'bottom-28' : 'bottom-6'}`}>
+      <div className={`fixed right-6 z-[160] flex flex-col gap-3 transition-all ${sessionState.dayId !== null && isStickyVisible ? 'bottom-28' : 'bottom-6'}`}>
         {activeDayData && activeDayData.blocks.length > 0 && (
           <button
             onClick={toggleAllBlocks}
