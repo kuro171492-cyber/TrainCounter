@@ -1194,6 +1194,8 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedRoundIdx, setFocusedRoundIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
+  const [startedFromFocus, setStartedFromFocus] = useState(false);
+  const [focusDismissedManually, setFocusDismissedManually] = useState(false);
   const [roundFlowState, setRoundFlowState] = useState({});
   const isBlockDone = block.completedRounds?.length === block.rounds;
   const activeRoundIdx = Array.from({ length: block.rounds }).findIndex((_, i) => !(block.completedRounds || []).includes(i));
@@ -1214,12 +1216,18 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   }, [isSessionActive, isExpanded, activeRoundIdx]);
 
   useEffect(() => {
-    if (!isSessionActive || !isExpanded) setIsFocusFullscreen(false);
+    if (!isSessionActive || !isExpanded) {
+      setIsFocusFullscreen(false);
+      setStartedFromFocus(false);
+      setFocusDismissedManually(false);
+    }
   }, [isSessionActive, isExpanded]);
 
   useEffect(() => {
-    if (isTimerActive) setIsFocusFullscreen(false);
-  }, [isTimerActive]);
+    if (isTimerActive && startedFromFocus && isFocusFullscreen) {
+      setIsFocusFullscreen(false);
+    }
+  }, [isTimerActive, startedFromFocus, isFocusFullscreen]);
 
   useEffect(() => {
     if (!isSessionActive) {
@@ -1246,6 +1254,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     if (nextRoundIdx !== -1) {
       setFocusedRoundIdx(nextRoundIdx);
       setIsFocusFullscreen(true);
+      setFocusDismissedManually(false);
       return;
     }
     goToNextExercise(block.id, { setIdx: 0, fullscreen: true });
@@ -1347,6 +1356,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         timedExercise.name || block.name,
         () => {
           const followingTimedIdx = timedExerciseIndexes.find((idx) => idx > exIdx);
+          const hasNonTimedExercises = (block.exercises || []).some((exercise) => exercise.mode !== 'time');
           if (followingTimedIdx !== undefined) {
             if (followingTimedIdx === exIdx + 1) {
               runTimedExercise(roundIdx, followingTimedIdx);
@@ -1359,15 +1369,19 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
             return;
           }
 
-          const lastExercise = block.exercises?.[block.exercises.length - 1];
-          if (lastExercise?.mode !== 'time') {
+          if (hasNonTimedExercises) {
             setRoundFlowState((prev) => ({
               ...prev,
               [roundIdx]: { nextTimedIdx: -1, awaitingConfirm: true }
             }));
+            if (startedFromFocus && !focusDismissedManually) {
+              setIsFocusFullscreen(true);
+            }
+            setStartedFromFocus(false);
             return;
           }
 
+          setStartedFromFocus(false);
           toggleRoundComplete(roundIdx, { onRestComplete: () => goToNextRoundOrExercise(roundIdx) });
         },
         block.prepTime || '0s'
@@ -1384,6 +1398,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
           toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) });
           return;
         }
+        setStartedFromFocus(isFocusFullscreen && !focusDismissedManually);
         runTimedExercise(safeFocusedRoundIdx, nextTimedIdx);
         return;
       }
@@ -1393,7 +1408,10 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     return (
       <div className="fixed inset-0 z-[220] bg-[#2A2424] text-white flex flex-col items-center justify-center p-6">
         <button
-          onClick={() => setIsFocusFullscreen(false)}
+          onClick={() => {
+            setFocusDismissedManually(true);
+            setIsFocusFullscreen(false);
+          }}
           className="absolute top-6 right-6 w-12 h-12 rounded-full bg-black/25 text-white/80 flex items-center justify-center active:scale-95"
           title="Закрыть фокус"
         >
@@ -1628,6 +1646,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                       key={`superset-round-tab-${rIdx}`}
                       onClick={() => {
                         setFocusedRoundIdx(rIdx);
+                        setFocusDismissedManually(false);
                         if (!isTimerActive) setIsFocusFullscreen(true);
                       }}
                       className={`min-w-[92px] h-8 px-2 rounded-t-xl border-t-2 border-x-2 font-black text-[11px] uppercase italic tracking-wide transition-all ${isDone ? 'border-[#32D74B] text-[#32D74B] bg-[#32D74B]/10' : isActiveTab ? 'border-red-500 text-red-500 bg-red-500/10' : 'border-white/15 text-[#8E8E93] bg-black/25'}`}
