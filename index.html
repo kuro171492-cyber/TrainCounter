@@ -483,7 +483,7 @@ function App() {
             };
           }
           if (block.type === 'superset') {
-            return { ...block, completedRounds: [] };
+            return { ...block, completedRounds: [], exerciseCompletions: {} };
           }
           return block;
         })
@@ -707,6 +707,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
         { [ex1Id]: { value: '10', weight: '0' }, [ex2Id]: { value: '10', weight: '0' } }
       ];
       newBlock.completedRounds = [];
+      newBlock.exerciseCompletions = {};
     }
     onUpdate({ blocks: [...day.blocks, newBlock], activeBlockId: newId });
   };
@@ -1374,6 +1375,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         'work',
         timedExercise.name || block.name,
         () => {
+          onChange({ exerciseCompletions: setExerciseCompletion(roundIdx, timedExercise.id, true) });
           const followingTimedIdx = timedExerciseIndexes.find((idx) => idx > exIdx);
           const hasNonTimedExercises = (block.exercises || []).some((exercise) => exercise.mode !== 'time');
           if (followingTimedIdx !== undefined) {
@@ -1482,7 +1484,10 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                 onClick={() => canEditRound && openModal(ex.name || 'Exercise', isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
                   const nextValues = [...block.values];
                   nextValues[safeFocusedRoundIdx] = { ...nextValues[safeFocusedRoundIdx], [ex.id]: { value: v, weight: weight } };
-                  onChange({ values: nextValues });
+                  onChange({
+                    values: nextValues,
+                    exerciseCompletions: setExerciseCompletion(safeFocusedRoundIdx, ex.id, false)
+                  });
                 }, true, wt)}
                 className={`w-full rounded-2xl p-4 border transition-all text-left ${
                   focusedRoundDone || isExerciseCompleted
@@ -1645,7 +1650,10 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                                     <div onClick={() => !isRoundDone && openModal('Round '+(rIdx+1), isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
                                       let nv = [...block.values];
                                       nv[rIdx] = { ...nv[rIdx], [ex.id]: { value: v, weight: weight } };
-                                      onChange({ values: nv });
+                                      onChange({
+                                        values: nv,
+                                        exerciseCompletions: setExerciseCompletion(rIdx, ex.id, false)
+                                      });
                                     }, true, wt)} className={`h-full flex flex-col items-center justify-center transition-colors ${isRoundDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
                                       <span className={`font-black text-base tabular-nums italic transition-colors ${isRoundDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
                                       {parseFloat(wt) > 0 && <span className={`text-[7px] font-black mt-0.5 italic uppercase text-red-500 transition-opacity ${isSessionActive && !isHighlighted && !isRoundDone ? 'opacity-30' : 'opacity-100'}`}>{wt} kg</span>}
