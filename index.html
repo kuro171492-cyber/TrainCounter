@@ -508,11 +508,11 @@ function App() {
 
   useEffect(() => {
     let interval;
-    if (activeSession.dayId) {
-      interval = setInterval(() => setActiveSession(prev => ({ ...prev, elapsed: prev.elapsed + 1 })), 1000);
+    if (sessionState.dayId) {
+      interval = setInterval(() => dispatchSession({ type: 'TICK' }), 1000);
     }
     return () => clearInterval(interval);
-  }, [activeSession.dayId]);
+  }, [sessionState.dayId]);
 
   useEffect(() => {
     if (!activeTimer.isActive) return;
@@ -588,13 +588,13 @@ function App() {
   };
 
   const stopSessionAndResetProgress = () => {
-    if (!activeSession.dayId) {
-      setActiveSession({ dayId: null, elapsed: 0, startTime: null });
+    if (!sessionState.dayId) {
+      dispatchSession({ type: 'STOP' });
       return;
     }
 
     setSchedule(prev => prev.map(day => {
-      if (day.id !== activeSession.dayId) return day;
+      if (day.id !== sessionState.dayId) return day;
       return {
         ...day,
         blocks: (day.blocks || []).map(block => {
@@ -606,7 +606,7 @@ function App() {
       };
     }));
 
-    setActiveSession({ dayId: null, elapsed: 0, startTime: null });
+    dispatchSession({ type: 'STOP' });
   };
 
   return (
@@ -672,7 +672,7 @@ function App() {
                   ? { ...d, isCollapsed: false, activeBlockId: firstExerciseId || d.activeBlockId }
                   : d
               ));
-              setActiveSession({ dayId: activeDayData.id, elapsed: 0, startTime: Date.now() });
+              dispatchSession({ type: 'START', dayId: activeDayData.id });
             }}
             onStop={stopSessionAndResetProgress}
             onRemove={() => {
@@ -694,7 +694,7 @@ function App() {
         )}
       </div>
 
-      {activeSession.dayId && isStickyVisible && (
+      {sessionState.dayId && isStickyVisible && (
         <div className="fixed bottom-0 left-0 right-0 z-[150] px-4 pb-6 pt-10 bg-gradient-to-t from-black via-black/95 to-transparent animate-in slide-in-from-bottom duration-300 pointer-events-none">
           <div className="max-w-md mx-auto flex items-center gap-3 bg-[#1C1C1E] p-3 rounded-[24px] border border-red-500/30 shadow-[0_-10px_40px_rgba(255,59,48,0.2)] pointer-events-auto">
             <div className="flex-1 flex flex-col justify-center px-4">
@@ -703,8 +703,8 @@ function App() {
                 <span className="text-[8px] font-black uppercase text-red-500/60 italic tracking-[0.2em]">Active Session</span>
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-white font-black text-2xl tabular-nums italic tracking-tighter leading-none">{formatTime(activeSession.elapsed)}</span>
-                <span className="text-[10px] text-[#48484A] font-black italic">started {formatWallTime(activeSession.startTime)}</span>
+                <span className="text-white font-black text-2xl tabular-nums italic tracking-tighter leading-none">{formatTime(sessionState.elapsed)}</span>
+                <span className="text-[10px] text-[#48484A] font-black italic">started {formatWallTime(sessionState.startTime)}</span>
               </div>
             </div>
             <button
@@ -718,7 +718,7 @@ function App() {
       )}
 
       {/* Floating Action Buttons Area */}
-      <div className={`fixed right-6 z-[160] flex flex-col gap-3 transition-all ${activeSession.dayId && isStickyVisible ? 'bottom-28' : 'bottom-6'}`}>
+      <div className={`fixed right-6 z-[160] flex flex-col gap-3 transition-all ${sessionState.dayId && isStickyVisible ? 'bottom-28' : 'bottom-6'}`}>
         {activeDayData && activeDayData.blocks.length > 0 && (
           <button
             onClick={toggleAllBlocks}
