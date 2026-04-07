@@ -62,6 +62,11 @@ const QUICK_TIME = ['5s', '10s', '15s', '30s', '45s', '60s', '90s', '2m', '3m', 
 const QUICK_WEIGHTS = ['0', '2.5', '5', '10', '15', '20', '25', '50'];
 const PREP_OPTIONS = ['0s', '5s', '10s', '15s', '20s'];
 const DEFAULT_WORK_OVERTIME_ENABLED = false;
+const EXECUTION_ACTIONS = {
+  COMPLETE_STEP: 'COMPLETE_STEP',
+  SKIP: 'SKIP',
+  STOP: 'STOP'
+};
 
 const TIMER_IDLE_STATE = {
   isActive: false,
@@ -258,7 +263,6 @@ const migrateScheduleModel = (rawSchedule = []) =>
 
 const SmartInput = ({ value, onChange, className, placeholder, defaultValue, allowInlineEdit = true, editTrigger = 0 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const timerRef = useRef(null);
   const inputRef = useRef(null);
 
   const startEditing = () => {
@@ -271,28 +275,6 @@ const SmartInput = ({ value, onChange, className, placeholder, defaultValue, all
         inputRef.current.value = val;
       }
     }, 50);
-  };
-
-  const handleTouchStart = (e) => {
-    if (!allowInlineEdit) return;
-    timerRef.current = setTimeout(() => {
-      startEditing();
-    }, 600);
-  };
-
-  const handleTouchMove = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  };
-
-  const handleTouchEnd = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  };
-
-  const handleDoubleClick = (e) => {
-    if (!allowInlineEdit) return;
-    e.stopPropagation();
-    e.preventDefault();
-    startEditing();
   };
 
   useEffect(() => {
@@ -329,62 +311,13 @@ const SmartInput = ({ value, onChange, className, placeholder, defaultValue, all
         onFocus={handleFocus}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        onDoubleClick={handleDoubleClick}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
-        readOnly={!isEditing}
+        readOnly={!allowInlineEdit && !isEditing}
         className={`
           ${className} w-full transition-all duration-200
-          ${isEditing ? 'bg-black/40 ring-1 ring-red-500 rounded px-1 text-red-400' : 'cursor-default pointer-events-auto'}
+          ${isEditing ? 'bg-black/40 ring-1 ring-red-500 rounded px-1 text-red-400' : 'pointer-events-auto'}
         `}
         placeholder={placeholder}
       />
-    </div>
-  );
-};
-
-const SwipeableCell = ({ children, onSwipeRight, isDone, canSwipe, isHighlighted, isSessionActive }) => {
-  const [startX, setStartX] = useState(0);
-  const [offsetX, setOffsetX] = useState(0);
-  const threshold = 60;
-
-  const handleTouchStart = (e) => {
-    if (!isSessionActive || !canSwipe || isDone || !isHighlighted) return;
-    setStartX(e.touches[0].clientX);
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isSessionActive || !canSwipe || isDone || !isHighlighted) return;
-    const diff = e.touches[0].clientX - startX;
-    if (diff > 0) setOffsetX(Math.min(diff, 100));
-  };
-
-  const handleTouchEnd = () => {
-    if (offsetX > threshold) onSwipeRight();
-    setOffsetX(0);
-  };
-
-  const getStyleClasses = () => {
-    if (isDone) return 'ring-2 ring-[#32D74B] ring-inset opacity-60 scale-95';
-    if (!isSessionActive) return 'ring-1 ring-white/10 opacity-100 scale-100';
-    if (isHighlighted) return 'ring-2 ring-red-500 ring-inset opacity-100 scale-105 z-10 shadow-lg shadow-red-900/20';
-    return 'opacity-30 scale-100 ring-1 ring-white/5 pointer-events-none';
-  };
-
-  return (
-    <div className={`relative overflow-hidden rounded-[16px] flex-1 h-full transition-all duration-300 ${getStyleClasses()}`}>
-      <div className="absolute inset-0 bg-red-600 flex items-center pl-4 transition-opacity duration-200" style={{ opacity: offsetX > 10 ? 1 : 0 }}>
-        <Play className="w-4 h-4 text-white fill-white" />
-      </div>
-      <div
-        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-        style={{ transform: `translateX(${offsetX}px)` }}
-        className="relative z-10 h-full w-full transition-transform duration-200"
-      >
-        {children}
-      </div>
     </div>
   );
 };
