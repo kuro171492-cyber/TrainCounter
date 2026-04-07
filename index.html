@@ -1280,6 +1280,27 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
 
   const renderFocusedRoundCard = () => {
     const canEditRound = !focusedRoundDone;
+    const focusedTimedExercise = (block.exercises || []).find((ex) => ex.mode === 'time');
+
+    const handleFocusedRoundAction = () => {
+      if (focusedRoundDone) {
+        toggleRoundComplete(safeFocusedRoundIdx);
+        return;
+      }
+      if (focusedTimedExercise) {
+        const timedValue = block.values[safeFocusedRoundIdx]?.[focusedTimedExercise.id]?.value || '10s';
+        triggerTimer(
+          timedValue,
+          'work',
+          focusedTimedExercise.name || block.name,
+          () => toggleRoundComplete(safeFocusedRoundIdx),
+          block.prepTime || '0s'
+        );
+        return;
+      }
+      toggleRoundComplete(safeFocusedRoundIdx);
+    };
+
     return (
       <div className="fixed inset-0 z-[220] bg-[#2A2424] text-white flex flex-col items-center justify-center p-6">
         <button
@@ -1336,10 +1357,16 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         </div>
 
         <button
-          onClick={() => toggleRoundComplete(safeFocusedRoundIdx)}
+          onClick={handleFocusedRoundAction}
           className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-95 ${focusedRoundDone ? 'bg-[#32D74B]' : 'bg-black/35'}`}
         >
-          <Check size={40} className={focusedRoundDone ? 'text-black stroke-[3px]' : 'text-white'} />
+          {focusedRoundDone ? (
+            <Check size={40} className="text-black stroke-[3px]" />
+          ) : focusedTimedExercise ? (
+            <Play size={38} className="text-white fill-white translate-x-[2px]" />
+          ) : (
+            <Check size={40} className="text-white" />
+          )}
         </button>
       </div>
     );
