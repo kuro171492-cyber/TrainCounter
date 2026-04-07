@@ -18,7 +18,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect, useRef, useReducer } = React;
 
     // Без сборщика: берем иконки из глобального LucideReact (UMD).
     // Если какой-то конкретной иконки нет — даем fallback-пустую компоненту, чтобы логика не падала.
@@ -102,6 +102,37 @@ const adjustValue = (val, delta) => {
 const adjustWeight = (val, delta) => {
   const num = parseFloat(val || 0);
   return Math.max(0, +(num + delta).toFixed(2)).toString();
+};
+
+const initialSessionState = {
+  isActive: false,
+  currentBlockIndex: 0,
+  currentStepIndex: 0,
+  currentRound: 0,
+  phase: 'idle',
+  timeLeft: 0,
+  dayId: null,
+  elapsed: 0,
+  startTime: null
+};
+
+const sessionReducer = (state, event) => {
+  switch (event.type) {
+    case 'START':
+      return { ...initialSessionState, isActive: true, dayId: event.dayId, startTime: Date.now() };
+    case 'COMPLETE_STEP':
+      return { ...state, ...event.payload };
+    case 'NEXT':
+      return { ...state, ...event.payload };
+    case 'SKIP':
+      return { ...state, phase: 'idle', timeLeft: 0 };
+    case 'STOP':
+      return initialSessionState;
+    case 'TICK':
+      return state.isActive ? { ...state, elapsed: state.elapsed + 1 } : state;
+    default:
+      return state;
+  }
 };
 
 const SmartInput = ({ value, onChange, className, placeholder, defaultValue, allowInlineEdit = true, editTrigger = 0 }) => {
@@ -250,7 +281,7 @@ function App() {
   const [modal, setModal] = useState({ show: false, title: '', options: [], onSelect: null, currentVal: '', currentWeight: '0', hasWeightTab: false, activeTab: 'value' });
   const [confirmModal, setConfirmModal] = useState({ show: false, onConfirm: null, message: '', title: '' });
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [activeSession, setActiveSession] = useState({ dayId: null, elapsed: 0, startTime: null });
+  const [sessionState, dispatchSession] = useReducer(sessionReducer, initialSessionState);
   const [activeTimer, setActiveTimer] = useState({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 });
 
   const audioCtx = useRef(null);
@@ -356,11 +387,11 @@ function App() {
 
   useEffect(() => {
     let interval;
-    if (activeSession.dayId) {
-      interval = setInterval(() => setActiveSession(prev => ({ ...prev, elapsed: prev.elapsed + 1 })), 1000);
+    if (sessionState.dayId) {
+      interval = setInterval(() => dispatchSession({ type: 'TICK' }), 1000);
     }
     return () => clearInterval(interval);
-  }, [activeSession.dayId]);
+  }, [sessionState.dayId]);
 
   useEffect(() => {
     let interval;
@@ -424,13 +455,15 @@ function App() {
   }, [activeTimer.active, activeTimer.timeLeft, activeTimer.type]);
 
   const triggerTimer = (timeStr, type = 'rest', label = '', onComplete = null, prepTimeStr = '0s') => {
-    if (!activeSession.dayId) return;
+    if (!sessionState.dayId) return;
     const pSecs = parseToSeconds(prepTimeStr);
     const wSecs = parseToSeconds(timeStr);
     const allowOvertime = type === 'work' ? DEFAULT_WORK_OVERTIME_ENABLED : false;
     if (type === 'work' && pSecs > 0) {
+      dispatchSession({ type: 'COMPLETE_STEP', payload: { phase: 'prep', timeLeft: pSecs } });
       setActiveTimer({ active: true, timeLeft: pSecs, type: 'prep', label, onComplete: null, isOvertime: false, allowOvertime: false, meta: { workTime: timeStr, label, onComplete, allowOvertime }, initialTime: pSecs });
     } else {
+      dispatchSession({ type: 'COMPLETE_STEP', payload: { phase: type, timeLeft: wSecs } });
       setActiveTimer({ active: true, timeLeft: wSecs, type, label, onComplete, isOvertime: false, allowOvertime, initialTime: wSecs });
     }
   };
@@ -466,13 +499,13 @@ function App() {
   };
 
   const stopSessionAndResetProgress = () => {
-    if (!activeSession.dayId) {
-      setActiveSession({ dayId: null, elapsed: 0, startTime: null });
+    if (!sessionState.dayId) {
+      dispatchSession({ type: 'STOP' });
       return;
     }
 
     setSchedule(prev => prev.map(day => {
-      if (day.id !== activeSession.dayId) return day;
+      if (day.id !== sessionState.dayId) return day;
       return {
         ...day,
         blocks: (day.blocks || []).map(block => {
@@ -490,7 +523,7 @@ function App() {
       };
     }));
 
-    setActiveSession({ dayId: null, elapsed: 0, startTime: null });
+    dispatchSession({ type: 'STOP' });
   };
 
   return (
@@ -547,16 +580,16 @@ function App() {
             day={activeDayData}
             timerRef={mainTimerRef}
             isTimerActive={activeTimer.active}
-            isSessionActive={activeSession.dayId === activeDayData.id}
-            sessionElapsed={activeSession.elapsed}
-            sessionStartTime={activeSession.startTime}
+            isSessionActive={sessionState.dayId === activeDayData.id}
+            sessionElapsed={sessionState.elapsed}
+            sessionStartTime={sessionState.startTime}
             onStart={(firstExerciseId) => {
               setSchedule(prev => prev.map(d =>
                 d.id === activeDayData.id
                   ? { ...d, isCollapsed: false, activeBlockId: firstExerciseId || d.activeBlockId }
                   : d
               ));
-              setActiveSession({ dayId: activeDayData.id, elapsed: 0, startTime: Date.now() });
+              dispatchSession({ type: 'START', dayId: activeDayData.id });
             }}
             onStop={stopSessionAndResetProgress}
             onRemove={() => {
@@ -576,7 +609,7 @@ function App() {
         )}
       </div>
 
-      {activeSession.dayId && isStickyVisible && (
+      {sessionState.dayId && isStickyVisible && (
         <div className="fixed bottom-0 left-0 right-0 z-[150] px-4 pb-6 pt-10 bg-gradient-to-t from-black via-black/95 to-transparent animate-in slide-in-from-bottom duration-300 pointer-events-none">
           <div className="max-w-md mx-auto flex items-center gap-3 bg-[#1C1C1E] p-3 rounded-[24px] border border-red-500/30 shadow-[0_-10px_40px_rgba(255,59,48,0.2)] pointer-events-auto">
             <div className="flex-1 flex flex-col justify-center px-4">
@@ -585,8 +618,8 @@ function App() {
                 <span className="text-[8px] font-black uppercase text-red-500/60 italic tracking-[0.2em]">Active Session</span>
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-white font-black text-2xl tabular-nums italic tracking-tighter leading-none">{formatTime(activeSession.elapsed)}</span>
-                <span className="text-[10px] text-[#48484A] font-black italic">started {formatWallTime(activeSession.startTime)}</span>
+                <span className="text-white font-black text-2xl tabular-nums italic tracking-tighter leading-none">{formatTime(sessionState.elapsed)}</span>
+                <span className="text-[10px] text-[#48484A] font-black italic">started {formatWallTime(sessionState.startTime)}</span>
               </div>
             </div>
             <button
@@ -600,7 +633,7 @@ function App() {
       )}
 
       {/* Floating Action Buttons Area */}
-      <div className={`fixed right-6 z-[160] flex flex-col gap-3 transition-all ${activeSession.dayId && isStickyVisible ? 'bottom-28' : 'bottom-6'}`}>
+      <div className={`fixed right-6 z-[160] flex flex-col gap-3 transition-all ${sessionState.dayId && isStickyVisible ? 'bottom-28' : 'bottom-6'}`}>
         {activeDayData && activeDayData.blocks.length > 0 && (
           <button
             onClick={toggleAllBlocks}
@@ -628,8 +661,8 @@ function App() {
           <h2 className="text-9xl font-black tabular-nums tracking-tighter leading-none mb-16">{activeTimer.isOvertime ? '+' : ''}{formatTime(activeTimer.timeLeft)}</h2>
           <div className="flex items-center gap-8">
             <button onClick={() => setActiveTimer(p => ({ ...p, timeLeft: p.initialTime, isOvertime: false }))} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20"><RotateCcw className="w-6 h-6" /></button>
-            <button onClick={() => { const { onComplete, type, isOvertime, timeLeft } = activeTimer; const shouldCompleteWork = type === 'work' && (isOvertime || timeLeft <= 0); setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 }); if (shouldCompleteWork && onComplete) onComplete(); }} className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl ${activeTimer.isOvertime ? 'bg-[#32D74B]' : 'bg-black/30'}`}>{activeTimer.isOvertime ? <Check className="w-10 h-10 text-black" /> : <Square className="w-8 h-8 fill-white" />}</button>
-            <button onClick={() => setActiveTimer({ ...activeTimer, active: false })} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20 text-white/50"><X className="w-6 h-6" /></button>
+            <button onClick={() => { const { onComplete, type, isOvertime, timeLeft } = activeTimer; const shouldCompleteWork = type === 'work' && (isOvertime || timeLeft <= 0); setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 }); dispatchSession({ type: 'SKIP' }); if (shouldCompleteWork && onComplete) onComplete(); }} className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl ${activeTimer.isOvertime ? 'bg-[#32D74B]' : 'bg-black/30'}`}>{activeTimer.isOvertime ? <Check className="w-10 h-10 text-black" /> : <Square className="w-8 h-8 fill-white" />}</button>
+            <button onClick={() => { setActiveTimer({ ...activeTimer, active: false }); dispatchSession({ type: 'SKIP' }); }} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20 text-white/50"><X className="w-6 h-6" /></button>
           </div>
         </div>
       )}
