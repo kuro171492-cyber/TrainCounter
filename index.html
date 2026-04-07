@@ -1205,29 +1205,13 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   const timedExerciseIndexes = (block.exercises || [])
     .map((ex, idx) => (ex.mode === 'time' ? idx : -1))
     .filter((idx) => idx !== -1);
-  const exerciseCompletions = block.exerciseCompletions || {};
-  const getRoundExerciseCompletions = (roundIdx) => exerciseCompletions[roundIdx] || {};
-  const isExerciseDone = (roundIdx, exerciseId) => !!getRoundExerciseCompletions(roundIdx)[exerciseId];
-  const resetRoundExerciseCompletions = (roundIdx) => {
-    const nextCompletions = { ...exerciseCompletions };
-    delete nextCompletions[roundIdx];
-    return nextCompletions;
-  };
-  const setExerciseCompletion = (roundIdx, exerciseId, completed = true) => {
-    const nextCompletions = { ...exerciseCompletions };
-    const roundMap = { ...(nextCompletions[roundIdx] || {}) };
-    if (completed) {
-      roundMap[exerciseId] = true;
-      nextCompletions[roundIdx] = roundMap;
-    } else {
-      delete roundMap[exerciseId];
-      if (Object.keys(roundMap).length === 0) {
-        delete nextCompletions[roundIdx];
-      } else {
-        nextCompletions[roundIdx] = roundMap;
-      }
-    }
-    return nextCompletions;
+  const roundExerciseCompletion = Array.isArray(block.roundExerciseCompletion) ? block.roundExerciseCompletion : [];
+
+  const updateRoundExerciseCompletion = (roundIdx, updater) => {
+    const nextCompletion = [...roundExerciseCompletion];
+    const currentRoundCompletion = { ...(nextCompletion[roundIdx] || {}) };
+    nextCompletion[roundIdx] = updater(currentRoundCompletion);
+    onChange({ roundExerciseCompletion: nextCompletion });
   };
 
   useEffect(() => {
@@ -1247,12 +1231,6 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
       setFocusDismissedManually(false);
     }
   }, [isSessionActive, isExpanded]);
-
-  useEffect(() => {
-    if (isTimerActive && startedFromFocus && isFocusFullscreen) {
-      setIsFocusFullscreen(false);
-    }
-  }, [isTimerActive, startedFromFocus, isFocusFullscreen]);
 
   useEffect(() => {
     if (!isSessionActive) {
@@ -1294,10 +1272,14 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         const firstTimedIdx = timedExerciseIndexes[0] ?? -1;
         return { ...prev, [rIdx]: { nextTimedIdx: firstTimedIdx, awaitingConfirm: false } };
       });
-      openConfirm('Сбросить круг?', () => onChange({
-        completedRounds: block.completedRounds.filter(r => r !== rIdx),
-        exerciseCompletions: resetRoundExerciseCompletions(rIdx)
-      }), 'Сброс');
+      openConfirm('Сбросить круг?', () => {
+        const nextCompletion = [...roundExerciseCompletion];
+        nextCompletion[rIdx] = {};
+        onChange({
+          completedRounds: block.completedRounds.filter(r => r !== rIdx),
+          roundExerciseCompletion: nextCompletion
+        });
+      }, 'Сброс');
     } else {
       setRoundFlowState((prev) => {
         const next = { ...prev };
@@ -1326,16 +1308,11 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     } else {
       newValues = newValues.slice(0, nextCount);
     }
-    const nextCompletions = {};
-    Object.entries(exerciseCompletions).forEach(([roundKey, roundMap]) => {
-      const roundIdx = Number(roundKey);
-      if (roundIdx < nextCount) nextCompletions[roundIdx] = roundMap;
-    });
     onChange({
       rounds: nextCount,
       values: newValues,
       completedRounds: (block.completedRounds || []).filter(r => r < nextCount),
-      exerciseCompletions: nextCompletions
+      roundExerciseCompletion: roundExerciseCompletion.slice(0, nextCount)
     });
   };
 
@@ -1355,13 +1332,12 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         delete nextV[lastExId];
         return nextV;
       });
-      const nextCompletions = {};
-      Object.entries(exerciseCompletions).forEach(([roundKey, roundMap]) => {
-        const nextRoundMap = { ...roundMap };
-        delete nextRoundMap[lastExId];
-        if (Object.keys(nextRoundMap).length > 0) nextCompletions[roundKey] = nextRoundMap;
+      const nextCompletion = roundExerciseCompletion.map((roundMap) => {
+        const updatedRoundMap = { ...(roundMap || {}) };
+        delete updatedRoundMap[lastExId];
+        return updatedRoundMap;
       });
-      onChange({ exercises: newExercises, values: newValues, exerciseCompletions: nextCompletions });
+      onChange({ exercises: newExercises, values: newValues, roundExerciseCompletion: nextCompletion });
     }
   };
 
@@ -1443,6 +1419,19 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
           toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) });
           return;
         }
+        const completedRepExerciseIdsBeforeTimed = (block.exercises || [])
+          .slice(0, nextTimedIdx)
+          .filter((exercise) => exercise.mode === 'reps')
+          .map((exercise) => exercise.id);
+        if (completedRepExerciseIdsBeforeTimed.length) {
+          updateRoundExerciseCompletion(safeFocusedRoundIdx, (currentRoundCompletion) => {
+            const nextRoundCompletion = { ...currentRoundCompletion };
+            completedRepExerciseIdsBeforeTimed.forEach((exerciseId) => {
+              nextRoundCompletion[exerciseId] = true;
+            });
+            return nextRoundCompletion;
+          });
+        }
         setStartedFromFocus(isFocusFullscreen && !focusDismissedManually);
         runTimedExercise(safeFocusedRoundIdx, nextTimedIdx);
         return;
@@ -1488,7 +1477,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
             const val = cellData.value || '10';
             const wt = cellData.weight || '0';
             const isTime = ex.mode === 'time';
-            const isExerciseCompleted = isExerciseDone(safeFocusedRoundIdx, ex.id);
+            const isExerciseCompleted = !!roundExerciseCompletion[safeFocusedRoundIdx]?.[ex.id];
             return (
               <button
                 key={`focus-ex-${ex.id}`}
@@ -1502,14 +1491,18 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                 }, true, wt)}
                 className={`w-full rounded-2xl p-4 border transition-all text-left ${
                   focusedRoundDone || isExerciseCompleted
-                    ? 'bg-[#32D74B]/10 border-[#32D74B]/30'
+                    ? 'bg-[#32D74B]/10 border-[#32D74B]/40'
                     : 'bg-black/25 border-white/10 active:scale-[0.99]'
                 }`}
               >
-                <div className={`text-[10px] font-black uppercase italic tracking-widest mb-1 truncate ${isExerciseCompleted ? 'text-[#32D74B]' : 'text-[#8E8E93]'}`}>{ex.name}</div>
+                <div className="flex items-center justify-between gap-3 mb-1">
+                  <div className="text-[10px] font-black uppercase italic tracking-widest text-[#8E8E93] truncate">{ex.name}</div>
+                  {isExerciseCompleted && !focusedRoundDone && (
+                    <Check size={14} className="text-[#32D74B] shrink-0" />
+                  )}
+                </div>
                 <div className="flex items-end gap-2">
-                  <span className={`font-black text-4xl tabular-nums italic ${(focusedRoundDone || isExerciseCompleted) ? 'text-[#32D74B]' : 'text-white'}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
-                  {isExerciseCompleted && !focusedRoundDone && <Check size={16} className="text-[#32D74B] mb-2" />}
+                  <span className={`font-black text-4xl tabular-nums italic ${focusedRoundDone || isExerciseCompleted ? 'text-[#32D74B]' : 'text-white'}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
                   {parseFloat(wt) > 0 && <span className="text-[11px] font-black mb-1 italic uppercase text-red-500">{wt} kg</span>}
                 </div>
               </button>
