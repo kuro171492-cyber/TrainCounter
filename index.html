@@ -623,7 +623,7 @@ function App() {
 
       {/* Timer Overlay */}
       {activeTimer.active && (
-        <div className={`fixed inset-0 z-[200] flex flex-col items-center justify-center p-6 text-white transition-colors duration-500 ${activeTimer.type === 'rest' ? 'bg-[#FF9500]' : activeTimer.type === 'prep' ? 'bg-orange-600' : activeTimer.isOvertime ? 'bg-red-900' : 'bg-[#FF3B30]'}`}>
+        <div className={`fixed inset-0 z-[260] flex flex-col items-center justify-center p-6 text-white transition-colors duration-500 ${activeTimer.type === 'rest' ? 'bg-[#FF9500]' : activeTimer.type === 'prep' ? 'bg-orange-600' : activeTimer.isOvertime ? 'bg-red-900' : 'bg-[#FF3B30]'}`}>
           <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-4 italic">{activeTimer.type === 'rest' ? 'Восстановление' : activeTimer.type === 'prep' ? 'Приготовьтесь' : activeTimer.isOvertime ? 'Превышение' : activeTimer.label}</span>
           <h2 className="text-9xl font-black tabular-nums tracking-tighter leading-none mb-16">{activeTimer.isOvertime ? '+' : ''}{formatTime(activeTimer.timeLeft)}</h2>
           <div className="flex items-center gap-8">
