@@ -18,7 +18,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect, useRef, useReducer } = React;
 
     // Без сборщика: берем иконки из глобального LucideReact (UMD).
     // Если какой-то конкретной иконки нет — даем fallback-пустую компоненту, чтобы логика не падала.
@@ -62,6 +62,78 @@ const QUICK_TIME = ['5s', '10s', '15s', '30s', '45s', '60s', '90s', '2m', '3m', 
 const QUICK_WEIGHTS = ['0', '2.5', '5', '10', '15', '20', '25', '50'];
 const PREP_OPTIONS = ['0s', '5s', '10s', '15s', '20s'];
 const DEFAULT_WORK_OVERTIME_ENABLED = false;
+
+const TIMER_IDLE_STATE = {
+  isActive: false,
+  phase: 'idle',
+  timeLeft: 0,
+  label: '',
+  isOvertime: false,
+  allowOvertime: false,
+  initialTime: 0,
+  workTime: 0,
+  transition: null,
+  completion: null
+};
+
+const timerReducer = (state, action) => {
+  switch (action.type) {
+    case 'START': {
+      const { phase, timeLeft, label = '', allowOvertime = false, initialTime = timeLeft, workTime = 0, transition = null } = action.payload;
+      return {
+        ...TIMER_IDLE_STATE,
+        isActive: true,
+        phase,
+        timeLeft,
+        label,
+        allowOvertime,
+        initialTime,
+        workTime,
+        transition
+      };
+    }
+    case 'STOP':
+      return { ...TIMER_IDLE_STATE };
+    case 'RESET_CURRENT':
+      return { ...state, timeLeft: state.initialTime, isOvertime: false };
+    case 'ACK_COMPLETION':
+      return { ...state, completion: null };
+    case 'TICK': {
+      if (!state.isActive) return state;
+      if (state.phase === 'prep') {
+        if (state.timeLeft > 0) return { ...state, timeLeft: state.timeLeft - 1 };
+        return {
+          ...state,
+          phase: 'work',
+          timeLeft: state.workTime,
+          initialTime: state.workTime,
+          isOvertime: false
+        };
+      }
+      if (state.phase === 'rest') {
+        if (state.timeLeft > 0) return { ...state, timeLeft: state.timeLeft - 1 };
+        return {
+          ...TIMER_IDLE_STATE,
+          completion: state.transition ? { id: generateId(), action: state.transition } : null
+        };
+      }
+      if (state.phase === 'work') {
+        if (!state.isOvertime) {
+          if (state.timeLeft > 0) return { ...state, timeLeft: state.timeLeft - 1 };
+          if (state.allowOvertime) return { ...state, isOvertime: true, timeLeft: 1 };
+          return {
+            ...TIMER_IDLE_STATE,
+            completion: state.transition ? { id: generateId(), action: state.transition } : null
+          };
+        }
+        return { ...state, timeLeft: state.timeLeft + 1 };
+      }
+      return state;
+    }
+    default:
+      return state;
+  }
+};
 
 const DEFAULT_VALUES = [
   'Сессия', 'Новое упражнение', 'Новый суперсет', 'Приседания', 'Отжимания', 'Новое упр'
@@ -331,7 +403,7 @@ function App() {
   const [confirmModal, setConfirmModal] = useState({ show: false, onConfirm: null, message: '', title: '' });
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [activeSession, setActiveSession] = useState({ dayId: null, elapsed: 0, startTime: null });
-  const [activeTimer, setActiveTimer] = useState({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 });
+  const [activeTimer, dispatchTimer] = useReducer(timerReducer, TIMER_IDLE_STATE);
 
   const audioCtx = useRef(null);
   const mainTimerRef = useRef(null);
@@ -443,75 +515,45 @@ function App() {
   }, [activeSession.dayId]);
 
   useEffect(() => {
-    let interval;
-    if (activeTimer.active) {
-      interval = setInterval(() => {
-        if (activeTimer.type === 'rest' || activeTimer.type === 'prep') {
-          if (activeTimer.timeLeft > 0) {
-            const nextTime = activeTimer.timeLeft - 1;
-            if (activeTimer.type === 'prep') {
-              // подготовка: тик каждую секунду, последние 3 сек — более яркий сигнал
-              if (nextTime <= 3) playMetronome('countdown');
-              else playMetronome('prepTick');
-            }
-            setActiveTimer(prev => ({ ...prev, timeLeft: nextTime }));
-          } else {
-            if (activeTimer.type === 'prep') {
-              const { label, workTime, onComplete } = activeTimer.meta;
-              playMetronome('start');
-              setActiveTimer({
-                active: true,
-                timeLeft: parseToSeconds(workTime),
-                type: 'work',
-                label,
-                onComplete,
-                isOvertime: false,
-                allowOvertime: !!activeTimer.meta?.allowOvertime,
-                initialTime: parseToSeconds(workTime)
-              });
-            } else {
-              const cb = activeTimer.onComplete;
-              playMetronome('restFinish');
-              setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 });
-              if (cb) cb();
-            }
-          }
-        } else if (activeTimer.type === 'work') {
-          if (!activeTimer.isOvertime) {
-            if (activeTimer.timeLeft > 0) {
-              const nextTime = activeTimer.timeLeft - 1;
-              // упражнение: метроном каждую секунду, последние 3 сек — countdown
-              if (nextTime <= 3) playMetronome('countdown');
-              else playMetronome('tick');
-              setActiveTimer(prev => ({ ...prev, timeLeft: nextTime }));
-            } else {
-              const cb = activeTimer.onComplete;
-              playMetronome('finish');
-              if (activeTimer.allowOvertime) {
-                setActiveTimer(prev => ({ ...prev, isOvertime: true, timeLeft: 1 }));
-              } else {
-                setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 });
-                if (cb) cb();
-              }
-            }
-          } else {
-            setActiveTimer(prev => ({ ...prev, timeLeft: prev.timeLeft + 1 }));
-          }
-        }
-      }, 1000);
-    }
+    if (!activeTimer.isActive) return;
+    const interval = setInterval(() => dispatchTimer({ type: 'TICK' }), 1000);
     return () => clearInterval(interval);
-  }, [activeTimer.active, activeTimer.timeLeft, activeTimer.type]);
+  }, [activeTimer.isActive]);
 
-  const triggerTimer = (timeStr, type = 'rest', label = '', onComplete = null, prepTimeStr = '0s') => {
+  useEffect(() => {
+    if (!activeTimer.isActive) return;
+    if (activeTimer.phase === 'prep') {
+      if (activeTimer.timeLeft === 0) playMetronome('start');
+      else if (activeTimer.timeLeft <= 3) playMetronome('countdown');
+      else playMetronome('prepTick');
+      return;
+    }
+    if (activeTimer.phase === 'work') {
+      if (!activeTimer.isOvertime) {
+        if (activeTimer.timeLeft <= 3) playMetronome('countdown');
+        else playMetronome('tick');
+      }
+      return;
+    }
+  }, [activeTimer.phase, activeTimer.timeLeft, activeTimer.isActive, activeTimer.isOvertime]);
+
+  useEffect(() => {
+    if (!activeTimer.completion) return;
+    if (activeTimer.phase === 'idle') {
+      const type = activeTimer.completion.action?.kind === 'afterRest' ? 'restFinish' : 'finish';
+      playMetronome(type);
+    }
+  }, [activeTimer.completion, activeTimer.phase]);
+
+  const triggerTimer = (timeStr, type = 'rest', label = '', transition = null, prepTimeStr = '0s') => {
     if (!activeSession.dayId) return;
     const pSecs = parseToSeconds(prepTimeStr);
     const wSecs = parseToSeconds(timeStr);
     const allowOvertime = type === 'work' ? DEFAULT_WORK_OVERTIME_ENABLED : false;
     if (type === 'work' && pSecs > 0) {
-      setActiveTimer({ active: true, timeLeft: pSecs, type: 'prep', label, onComplete: null, isOvertime: false, allowOvertime: false, meta: { workTime: timeStr, label, onComplete, allowOvertime }, initialTime: pSecs });
+      dispatchTimer({ type: 'START', payload: { phase: 'prep', timeLeft: pSecs, initialTime: pSecs, label, workTime: wSecs, allowOvertime, transition } });
     } else {
-      setActiveTimer({ active: true, timeLeft: wSecs, type, label, onComplete, isOvertime: false, allowOvertime, initialTime: wSecs });
+      dispatchTimer({ type: 'START', payload: { phase: type, timeLeft: wSecs, initialTime: wSecs, label, allowOvertime, transition } });
     }
   };
 
@@ -620,7 +662,7 @@ function App() {
           <DayContainer
             day={activeDayData}
             timerRef={mainTimerRef}
-            isTimerActive={activeTimer.active}
+            isTimerActive={activeTimer.isActive}
             isSessionActive={activeSession.dayId === activeDayData.id}
             sessionElapsed={activeSession.elapsed}
             sessionStartTime={activeSession.startTime}
@@ -642,6 +684,8 @@ function App() {
             openModal={(t, o, c, s, h, w) => setModal({ show: true, title: t, options: o, currentVal: c, onSelect: s, hasWeightTab: h, currentWeight: w, activeTab: 'value' })}
             openConfirm={(m, c, tit) => setConfirmModal({ show: true, message: m, onConfirm: c, title: tit || 'Подтверждение' })}
             triggerTimer={triggerTimer}
+            timerCompletion={activeTimer.completion}
+            onTimerCompletionHandled={() => dispatchTimer({ type: 'ACK_COMPLETION' })}
           />
         ) : (
           <div className="py-20 text-center text-[#48484A] uppercase italic font-black text-[10px] tracking-widest animate-pulse">
@@ -696,14 +740,14 @@ function App() {
       </div>
 
       {/* Timer Overlay */}
-      {activeTimer.active && (
-        <div className={`fixed inset-0 z-[260] flex flex-col items-center justify-center p-6 text-white transition-colors duration-500 ${activeTimer.type === 'rest' ? 'bg-[#FF9500]' : activeTimer.type === 'prep' ? 'bg-orange-600' : activeTimer.isOvertime ? 'bg-red-900' : 'bg-[#FF3B30]'}`}>
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-4 italic">{activeTimer.type === 'rest' ? 'Восстановление' : activeTimer.type === 'prep' ? 'Приготовьтесь' : activeTimer.isOvertime ? 'Превышение' : activeTimer.label}</span>
+      {activeTimer.isActive && (
+        <div className={`fixed inset-0 z-[260] flex flex-col items-center justify-center p-6 text-white transition-colors duration-500 ${activeTimer.phase === 'rest' ? 'bg-[#FF9500]' : activeTimer.phase === 'prep' ? 'bg-orange-600' : activeTimer.isOvertime ? 'bg-red-900' : 'bg-[#FF3B30]'}`}>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-4 italic">{activeTimer.phase === 'rest' ? 'Восстановление' : activeTimer.phase === 'prep' ? 'Приготовьтесь' : activeTimer.isOvertime ? 'Превышение' : activeTimer.label}</span>
           <h2 className="text-9xl font-black tabular-nums tracking-tighter leading-none mb-16">{activeTimer.isOvertime ? '+' : ''}{formatTime(activeTimer.timeLeft)}</h2>
           <div className="flex items-center gap-8">
-            <button onClick={() => setActiveTimer(p => ({ ...p, timeLeft: p.initialTime, isOvertime: false }))} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20"><RotateCcw className="w-6 h-6" /></button>
-            <button onClick={() => { const { onComplete, type, isOvertime, timeLeft } = activeTimer; const shouldCompleteWork = type === 'work' && (isOvertime || timeLeft <= 0); setActiveTimer({ active: false, timeLeft: 0, type: 'rest', label: '', onComplete: null, isOvertime: false, allowOvertime: false, initialTime: 0 }); if (shouldCompleteWork && onComplete) onComplete(); }} className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl ${activeTimer.isOvertime ? 'bg-[#32D74B]' : 'bg-black/30'}`}>{activeTimer.isOvertime ? <Check className="w-10 h-10 text-black" /> : <Square className="w-8 h-8 fill-white" />}</button>
-            <button onClick={() => setActiveTimer({ ...activeTimer, active: false })} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20 text-white/50"><X className="w-6 h-6" /></button>
+            <button onClick={() => dispatchTimer({ type: 'RESET_CURRENT' })} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20"><RotateCcw className="w-6 h-6" /></button>
+            <button onClick={() => dispatchTimer({ type: 'STOP' })} className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl ${activeTimer.isOvertime ? 'bg-[#32D74B]' : 'bg-black/30'}`}>{activeTimer.isOvertime ? <Check className="w-10 h-10 text-black" /> : <Square className="w-8 h-8 fill-white" />}</button>
+            <button onClick={() => dispatchTimer({ type: 'STOP' })} className="w-16 h-16 rounded-full flex items-center justify-center bg-black/20 text-white/50"><X className="w-6 h-6" /></button>
           </div>
         </div>
       )}
@@ -754,7 +798,7 @@ function App() {
   );
 }
 
-function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, sessionElapsed, sessionStartTime, onStart, onStop, onRemove }) {
+function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, triggerTimer, timerCompletion, onTimerCompletionHandled, isTimerActive, isSessionActive, sessionElapsed, sessionStartTime, onStart, onStop, onRemove }) {
   const [draggedId, setDraggedId] = useState(null);
   const [targetId, setTargetId] = useState(null);
   const [pendingFocus, setPendingFocus] = useState(null);
@@ -906,7 +950,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
   );
 }
 
-function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null, goToNextExercise = () => {}, pendingFocusRequest = null, onPendingFocusApplied = () => {} }) {
+function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isTimerActive, isSessionActive, isDraggable, shouldAutoFocusOnStart = false, sessionStartTime = null, goToNextExercise = () => {}, pendingFocusRequest = null, onPendingFocusApplied = () => {}, timerCompletion = null, onTimerCompletionHandled = () => {} }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedStepIdx, setFocusedStepIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
