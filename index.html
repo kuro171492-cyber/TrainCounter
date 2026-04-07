@@ -18,7 +18,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect, useRef, useMemo, useReducer } = React;
 
     // Без сборщика: берем иконки из глобального LucideReact (UMD).
     // Если какой-то конкретной иконки нет — даем fallback-пустую компоненту, чтобы логика не падала.
@@ -1191,13 +1191,134 @@ function BlockItem({ block, isExpanded, onToggle, onRemove, onChange, openModal,
   );
 }
 
+const createSupersetFlowSteps = (block) => {
+  const steps = [];
+  const timedExercises = (block.exercises || []).filter((exercise) => exercise.mode === 'time');
+
+  for (let roundIdx = 0; roundIdx < (block.rounds || 0); roundIdx++) {
+    timedExercises.forEach((exercise) => {
+      steps.push({
+        type: 'work',
+        roundIdx,
+        exerciseId: exercise.id,
+        exerciseName: exercise.name || block.name,
+        value: block.values?.[roundIdx]?.[exercise.id]?.value || '10s',
+        groupId: 'A'
+      });
+    });
+
+    if (roundIdx < block.rounds - 1 && (block.restTime || '0s') !== '0s') {
+      steps.push({
+        type: 'rest',
+        roundIdx,
+        value: block.restTime || '60s'
+      });
+    }
+  }
+
+  return steps;
+};
+
+const findNextSupersetStep = (steps, currentIdx) => {
+  if (currentIdx < 0 || currentIdx >= steps.length - 1) return null;
+  const currentStep = steps[currentIdx];
+
+  // Шаг вне группы -> обычный следующий шаг.
+  if (!currentStep.groupId) return currentIdx + 1;
+
+  const currentRound = currentStep.roundIdx;
+  const currentGroup = currentStep.groupId;
+  const nextIdx = currentIdx + 1;
+  const nextStep = steps[nextIdx];
+
+  // Если внутри группы есть следующий шаг того же раунда — идем в него.
+  if (nextStep?.groupId === currentGroup && nextStep.roundIdx === currentRound) {
+    return nextIdx;
+  }
+
+  // После завершения группы сначала rest (если есть), затем следующий раунд группы.
+  if (nextStep?.type === 'rest') return nextIdx;
+
+  const nextRoundGroupIdx = steps.findIndex((step, idx) =>
+    idx > currentIdx &&
+    step.groupId === currentGroup &&
+    step.roundIdx === currentRound + 1
+  );
+
+  if (nextRoundGroupIdx !== -1) return nextRoundGroupIdx;
+  return nextIdx <= steps.length - 1 ? nextIdx : null;
+};
+
+const buildInitialSupersetRunState = () => ({
+  status: 'idle',
+  stepIdx: -1,
+  currentRound: null,
+  activeGroupId: null
+});
+
+const supersetRunReducer = (state, action) => {
+  const steps = action.steps || [];
+
+  if (action.type === 'START') {
+    if (!steps.length) return { ...buildInitialSupersetRunState(), status: 'end' };
+    const firstStep = steps[0];
+    return {
+      status: action.prepSeconds > 0 ? 'prep' : 'work',
+      stepIdx: 0,
+      currentRound: firstStep.groupId ? firstStep.roundIdx : null,
+      activeGroupId: firstStep.groupId || null
+    };
+  }
+
+  if (action.type === 'COMPLETE_STEP') {
+    const currentStep = steps[state.stepIdx];
+    if (!currentStep) return state;
+    if (currentStep.type === 'work' && currentStep.groupId && action.restSeconds > 0) {
+      const nextStepIdx = findNextSupersetStep(steps, state.stepIdx);
+      const nextStep = nextStepIdx != null ? steps[nextStepIdx] : null;
+      if (nextStep?.type === 'rest') {
+        return {
+          ...state,
+          status: 'rest',
+          stepIdx: nextStepIdx,
+          currentRound: null,
+          activeGroupId: null
+        };
+      }
+    }
+    return supersetRunReducer(state, { type: 'NEXT', steps });
+  }
+
+  if (action.type === 'NEXT') {
+    const nextStepIdx = findNextSupersetStep(steps, state.stepIdx);
+    if (nextStepIdx == null) return { ...buildInitialSupersetRunState(), status: 'end' };
+    const nextStep = steps[nextStepIdx];
+    return {
+      status: nextStep.type === 'rest' ? 'rest' : 'work',
+      stepIdx: nextStepIdx,
+      currentRound: nextStep.groupId ? nextStep.roundIdx : null,
+      activeGroupId: nextStep.groupId || null
+    };
+  }
+
+  return state;
+};
+
+/*
+Demo flow возле reducer:
+groupId: A, 2 timed-шагa, 3 раунда, rest=60
+R1: A1 -> A2 -> rest(60)
+R2: A1 -> A2 -> rest(60)
+R3: A1 -> A2 -> END
+*/
+
 function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openModal, openConfirm, triggerTimer, isSessionActive, isDraggable, isTimerActive, goToNextExercise = () => {} }) {
   const [nameEditTrigger, setNameEditTrigger] = useState(0);
   const [focusedRoundIdx, setFocusedRoundIdx] = useState(0);
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const [startedFromFocus, setStartedFromFocus] = useState(false);
   const [focusDismissedManually, setFocusDismissedManually] = useState(false);
-  const [roundFlowState, setRoundFlowState] = useState({});
+  const [runState, dispatchRun] = useReducer(supersetRunReducer, undefined, buildInitialSupersetRunState);
   const isBlockDone = block.completedRounds?.length === block.rounds;
   const activeRoundIdx = Array.from({ length: block.rounds }).findIndex((_, i) => !(block.completedRounds || []).includes(i));
   const safeFocusedRoundIdx = Math.min(Math.max(focusedRoundIdx, 0), Math.max(block.rounds - 1, 0));
@@ -1232,25 +1353,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     }
   }, [isSessionActive, isExpanded]);
 
-  useEffect(() => {
-    if (!isSessionActive) {
-      setRoundFlowState({});
-      return;
-    }
-    setRoundFlowState((prev) => {
-      const next = {};
-      for (let rIdx = 0; rIdx < block.rounds; rIdx++) {
-        if ((block.completedRounds || []).includes(rIdx)) continue;
-        const firstTimedIdx = timedExerciseIndexes[0] ?? -1;
-        const current = prev[rIdx];
-        next[rIdx] = {
-          nextTimedIdx: current?.nextTimedIdx ?? firstTimedIdx,
-          awaitingConfirm: current?.awaitingConfirm ?? false
-        };
-      }
-      return next;
-    });
-  }, [isSessionActive, block.rounds, block.completedRounds, timedExerciseIndexes.join(',')]);
+  const supersetFlowSteps = useMemo(() => createSupersetFlowSteps(block), [block]);
 
   const goToNextRoundOrExercise = (rIdx) => {
     const nextRoundIdx = Array.from({ length: block.rounds }).findIndex((_, idx) => idx > rIdx && !(block.completedRounds || []).includes(idx));
@@ -1268,10 +1371,6 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     if (!isSessionActive || (rIdx !== activeRoundIdx && !(block.completedRounds || []).includes(rIdx))) return;
     const isCompleted = (block.completedRounds || []).includes(rIdx);
     if (isCompleted) {
-      setRoundFlowState((prev) => {
-        const firstTimedIdx = timedExerciseIndexes[0] ?? -1;
-        return { ...prev, [rIdx]: { nextTimedIdx: firstTimedIdx, awaitingConfirm: false } };
-      });
       openConfirm('Сбросить круг?', () => {
         const nextCompletion = [...roundExerciseCompletion];
         nextCompletion[rIdx] = {};
@@ -1281,11 +1380,6 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         });
       }, 'Сброс');
     } else {
-      setRoundFlowState((prev) => {
-        const next = { ...prev };
-        delete next[rIdx];
-        return next;
-      });
       onChange({ completedRounds: [...(block.completedRounds || []), rIdx] });
       if (block.restTime !== '0s') {
         triggerTimer(block.restTime || '60s', 'rest', '', onRestComplete);
@@ -1358,12 +1452,11 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   const renderFocusedRoundCard = () => {
     const canEditRound = !focusedRoundDone;
     const hasTimedExercises = timedExerciseIndexes.length > 0;
-    const roundState = roundFlowState[safeFocusedRoundIdx] || {
-      nextTimedIdx: timedExerciseIndexes[0] ?? -1,
-      awaitingConfirm: false
-    };
-    const isAwaitingRoundConfirm = roundState.awaitingConfirm;
-    const nextTimedIdx = roundState.nextTimedIdx;
+    const activeRunStep = runState.stepIdx >= 0 ? supersetFlowSteps[runState.stepIdx] : null;
+    const isAwaitingRoundConfirm = false;
+    const nextTimedIdx = activeRunStep
+      ? (block.exercises || []).findIndex((exercise) => exercise.id === activeRunStep.exerciseId)
+      : (timedExerciseIndexes[0] ?? -1);
 
     const runTimedExercise = (roundIdx, exIdx) => {
       const timedExercise = block.exercises?.[exIdx];
@@ -1375,35 +1468,11 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         'work',
         timedExercise.name || block.name,
         () => {
-          onChange({ exerciseCompletions: setExerciseCompletion(roundIdx, timedExercise.id, true) });
-          const followingTimedIdx = timedExerciseIndexes.find((idx) => idx > exIdx);
-          const hasNonTimedExercises = (block.exercises || []).some((exercise) => exercise.mode !== 'time');
-          if (followingTimedIdx !== undefined) {
-            if (followingTimedIdx === exIdx + 1) {
-              runTimedExercise(roundIdx, followingTimedIdx);
-              return;
-            }
-            setRoundFlowState((prev) => ({
-              ...prev,
-              [roundIdx]: { nextTimedIdx: followingTimedIdx, awaitingConfirm: false }
-            }));
-            return;
+          dispatchRun({ type: 'COMPLETE_STEP', steps: supersetFlowSteps, restSeconds: parseToSeconds(block.restTime || '0s') });
+          const isLastExerciseInRound = timedExerciseIndexes[timedExerciseIndexes.length - 1] === exIdx;
+          if (isLastExerciseInRound) {
+            toggleRoundComplete(roundIdx, { onRestComplete: () => goToNextRoundOrExercise(roundIdx) });
           }
-
-          if (hasNonTimedExercises) {
-            setRoundFlowState((prev) => ({
-              ...prev,
-              [roundIdx]: { nextTimedIdx: -1, awaitingConfirm: true }
-            }));
-            if (startedFromFocus && !focusDismissedManually) {
-              setIsFocusFullscreen(true);
-            }
-            setStartedFromFocus(false);
-            return;
-          }
-
-          setStartedFromFocus(false);
-          toggleRoundComplete(roundIdx, { onRestComplete: () => goToNextRoundOrExercise(roundIdx) });
         },
         block.prepTime || '0s'
       );
@@ -1415,6 +1484,9 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         return;
       }
       if (hasTimedExercises) {
+        if (runState.status === 'idle' || runState.status === 'end') {
+          dispatchRun({ type: 'START', steps: supersetFlowSteps, prepSeconds: parseToSeconds(block.prepTime || '0s') });
+        }
         if (isAwaitingRoundConfirm || nextTimedIdx === -1) {
           toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) });
           return;
@@ -1486,7 +1558,10 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                   nextValues[safeFocusedRoundIdx] = { ...nextValues[safeFocusedRoundIdx], [ex.id]: { value: v, weight: weight } };
                   onChange({
                     values: nextValues,
-                    exerciseCompletions: setExerciseCompletion(safeFocusedRoundIdx, ex.id, false)
+                    roundExerciseCompletion: roundExerciseCompletion.map((roundMap, index) => {
+                      if (index !== safeFocusedRoundIdx) return roundMap || {};
+                      return { ...(roundMap || {}), [ex.id]: false };
+                    })
                   });
                 }, true, wt)}
                 className={`w-full rounded-2xl p-4 border transition-all text-left ${
@@ -1652,7 +1727,10 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                                       nv[rIdx] = { ...nv[rIdx], [ex.id]: { value: v, weight: weight } };
                                       onChange({
                                         values: nv,
-                                        exerciseCompletions: setExerciseCompletion(rIdx, ex.id, false)
+                                        roundExerciseCompletion: roundExerciseCompletion.map((roundMap, index) => {
+                                          if (index !== rIdx) return roundMap || {};
+                                          return { ...(roundMap || {}), [ex.id]: false };
+                                        })
                                       });
                                     }, true, wt)} className={`h-full flex flex-col items-center justify-center transition-colors ${isRoundDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
                                       <span className={`font-black text-base tabular-nums italic transition-colors ${isRoundDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
