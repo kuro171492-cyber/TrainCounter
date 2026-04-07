@@ -483,7 +483,7 @@ function App() {
             };
           }
           if (block.type === 'superset') {
-            return { ...block, completedRounds: [] };
+            return { ...block, completedRounds: [], exerciseCompletions: {} };
           }
           return block;
         })
@@ -707,6 +707,7 @@ function DayContainer({ day, timerRef, onUpdate, openModal, openConfirm, trigger
         { [ex1Id]: { value: '10', weight: '0' }, [ex2Id]: { value: '10', weight: '0' } }
       ];
       newBlock.completedRounds = [];
+      newBlock.exerciseCompletions = {};
     }
     onUpdate({ blocks: [...day.blocks, newBlock], activeBlockId: newId });
   };
@@ -1204,6 +1205,30 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   const timedExerciseIndexes = (block.exercises || [])
     .map((ex, idx) => (ex.mode === 'time' ? idx : -1))
     .filter((idx) => idx !== -1);
+  const exerciseCompletions = block.exerciseCompletions || {};
+  const getRoundExerciseCompletions = (roundIdx) => exerciseCompletions[roundIdx] || {};
+  const isExerciseDone = (roundIdx, exerciseId) => !!getRoundExerciseCompletions(roundIdx)[exerciseId];
+  const resetRoundExerciseCompletions = (roundIdx) => {
+    const nextCompletions = { ...exerciseCompletions };
+    delete nextCompletions[roundIdx];
+    return nextCompletions;
+  };
+  const setExerciseCompletion = (roundIdx, exerciseId, completed = true) => {
+    const nextCompletions = { ...exerciseCompletions };
+    const roundMap = { ...(nextCompletions[roundIdx] || {}) };
+    if (completed) {
+      roundMap[exerciseId] = true;
+      nextCompletions[roundIdx] = roundMap;
+    } else {
+      delete roundMap[exerciseId];
+      if (Object.keys(roundMap).length === 0) {
+        delete nextCompletions[roundIdx];
+      } else {
+        nextCompletions[roundIdx] = roundMap;
+      }
+    }
+    return nextCompletions;
+  };
 
   useEffect(() => {
     if (!isSessionActive) return;
@@ -1269,7 +1294,10 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         const firstTimedIdx = timedExerciseIndexes[0] ?? -1;
         return { ...prev, [rIdx]: { nextTimedIdx: firstTimedIdx, awaitingConfirm: false } };
       });
-      openConfirm('Сбросить круг?', () => onChange({ completedRounds: block.completedRounds.filter(r => r !== rIdx) }), 'Сброс');
+      openConfirm('Сбросить круг?', () => onChange({
+        completedRounds: block.completedRounds.filter(r => r !== rIdx),
+        exerciseCompletions: resetRoundExerciseCompletions(rIdx)
+      }), 'Сброс');
     } else {
       setRoundFlowState((prev) => {
         const next = { ...prev };
@@ -1298,7 +1326,17 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     } else {
       newValues = newValues.slice(0, nextCount);
     }
-    onChange({ rounds: nextCount, values: newValues, completedRounds: (block.completedRounds || []).filter(r => r < nextCount) });
+    const nextCompletions = {};
+    Object.entries(exerciseCompletions).forEach(([roundKey, roundMap]) => {
+      const roundIdx = Number(roundKey);
+      if (roundIdx < nextCount) nextCompletions[roundIdx] = roundMap;
+    });
+    onChange({
+      rounds: nextCount,
+      values: newValues,
+      completedRounds: (block.completedRounds || []).filter(r => r < nextCount),
+      exerciseCompletions: nextCompletions
+    });
   };
 
   const adjustExerciseCount = (delta) => {
@@ -1317,7 +1355,13 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         delete nextV[lastExId];
         return nextV;
       });
-      onChange({ exercises: newExercises, values: newValues });
+      const nextCompletions = {};
+      Object.entries(exerciseCompletions).forEach(([roundKey, roundMap]) => {
+        const nextRoundMap = { ...roundMap };
+        delete nextRoundMap[lastExId];
+        if (Object.keys(nextRoundMap).length > 0) nextCompletions[roundKey] = nextRoundMap;
+      });
+      onChange({ exercises: newExercises, values: newValues, exerciseCompletions: nextCompletions });
     }
   };
 
@@ -1355,6 +1399,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         'work',
         timedExercise.name || block.name,
         () => {
+          onChange({ exerciseCompletions: setExerciseCompletion(roundIdx, timedExercise.id, true) });
           const followingTimedIdx = timedExerciseIndexes.find((idx) => idx > exIdx);
           const hasNonTimedExercises = (block.exercises || []).some((exercise) => exercise.mode !== 'time');
           if (followingTimedIdx !== undefined) {
@@ -1443,19 +1488,28 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
             const val = cellData.value || '10';
             const wt = cellData.weight || '0';
             const isTime = ex.mode === 'time';
+            const isExerciseCompleted = isExerciseDone(safeFocusedRoundIdx, ex.id);
             return (
               <button
                 key={`focus-ex-${ex.id}`}
                 onClick={() => canEditRound && openModal(ex.name || 'Exercise', isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
                   const nextValues = [...block.values];
                   nextValues[safeFocusedRoundIdx] = { ...nextValues[safeFocusedRoundIdx], [ex.id]: { value: v, weight: weight } };
-                  onChange({ values: nextValues });
+                  onChange({
+                    values: nextValues,
+                    exerciseCompletions: setExerciseCompletion(safeFocusedRoundIdx, ex.id, false)
+                  });
                 }, true, wt)}
-                className={`w-full rounded-2xl p-4 border transition-all text-left ${focusedRoundDone ? 'bg-[#32D74B]/10 border-[#32D74B]/30' : 'bg-black/25 border-white/10 active:scale-[0.99]'}`}
+                className={`w-full rounded-2xl p-4 border transition-all text-left ${
+                  focusedRoundDone || isExerciseCompleted
+                    ? 'bg-[#32D74B]/10 border-[#32D74B]/30'
+                    : 'bg-black/25 border-white/10 active:scale-[0.99]'
+                }`}
               >
-                <div className="text-[10px] font-black uppercase italic tracking-widest text-[#8E8E93] mb-1 truncate">{ex.name}</div>
+                <div className={`text-[10px] font-black uppercase italic tracking-widest mb-1 truncate ${isExerciseCompleted ? 'text-[#32D74B]' : 'text-[#8E8E93]'}`}>{ex.name}</div>
                 <div className="flex items-end gap-2">
-                  <span className={`font-black text-4xl tabular-nums italic ${focusedRoundDone ? 'text-[#32D74B]' : 'text-white'}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
+                  <span className={`font-black text-4xl tabular-nums italic ${(focusedRoundDone || isExerciseCompleted) ? 'text-[#32D74B]' : 'text-white'}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
+                  {isExerciseCompleted && !focusedRoundDone && <Check size={16} className="text-[#32D74B] mb-2" />}
                   {parseFloat(wt) > 0 && <span className="text-[11px] font-black mb-1 italic uppercase text-red-500">{wt} kg</span>}
                 </div>
               </button>
@@ -1603,7 +1657,10 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                                     <div onClick={() => !isRoundDone && openModal('Round '+(rIdx+1), isTime ? QUICK_TIME : QUICK_REPS, val, (v, weight) => {
                                       let nv = [...block.values];
                                       nv[rIdx] = { ...nv[rIdx], [ex.id]: { value: v, weight: weight } };
-                                      onChange({ values: nv });
+                                      onChange({
+                                        values: nv,
+                                        exerciseCompletions: setExerciseCompletion(rIdx, ex.id, false)
+                                      });
                                     }, true, wt)} className={`h-full flex flex-col items-center justify-center transition-colors ${isRoundDone ? 'bg-[#32D74B]/10' : 'bg-black/30 border border-white/5'} ${isSessionActive && isFuture ? 'opacity-40' : 'opacity-100'}`}>
                                       <span className={`font-black text-base tabular-nums italic transition-colors ${isRoundDone ? 'text-[#32D74B]' : (isSessionActive && !isHighlighted ? 'text-white/40' : 'text-white')}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
                                       {parseFloat(wt) > 0 && <span className={`text-[7px] font-black mt-0.5 italic uppercase text-red-500 transition-opacity ${isSessionActive && !isHighlighted && !isRoundDone ? 'opacity-30' : 'opacity-100'}`}>{wt} kg</span>}
