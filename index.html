@@ -1204,6 +1204,14 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   const timedExerciseIndexes = (block.exercises || [])
     .map((ex, idx) => (ex.mode === 'time' ? idx : -1))
     .filter((idx) => idx !== -1);
+  const roundExerciseCompletion = Array.isArray(block.roundExerciseCompletion) ? block.roundExerciseCompletion : [];
+
+  const updateRoundExerciseCompletion = (roundIdx, updater) => {
+    const nextCompletion = [...roundExerciseCompletion];
+    const currentRoundCompletion = { ...(nextCompletion[roundIdx] || {}) };
+    nextCompletion[roundIdx] = updater(currentRoundCompletion);
+    onChange({ roundExerciseCompletion: nextCompletion });
+  };
 
   useEffect(() => {
     if (!isSessionActive) return;
@@ -1263,7 +1271,14 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         const firstTimedIdx = timedExerciseIndexes[0] ?? -1;
         return { ...prev, [rIdx]: { nextTimedIdx: firstTimedIdx, awaitingConfirm: false } };
       });
-      openConfirm('Сбросить круг?', () => onChange({ completedRounds: block.completedRounds.filter(r => r !== rIdx) }), 'Сброс');
+      openConfirm('Сбросить круг?', () => {
+        const nextCompletion = [...roundExerciseCompletion];
+        nextCompletion[rIdx] = {};
+        onChange({
+          completedRounds: block.completedRounds.filter(r => r !== rIdx),
+          roundExerciseCompletion: nextCompletion
+        });
+      }, 'Сброс');
     } else {
       setRoundFlowState((prev) => {
         const next = { ...prev };
@@ -1292,7 +1307,12 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
     } else {
       newValues = newValues.slice(0, nextCount);
     }
-    onChange({ rounds: nextCount, values: newValues, completedRounds: (block.completedRounds || []).filter(r => r < nextCount) });
+    onChange({
+      rounds: nextCount,
+      values: newValues,
+      completedRounds: (block.completedRounds || []).filter(r => r < nextCount),
+      roundExerciseCompletion: roundExerciseCompletion.slice(0, nextCount)
+    });
   };
 
   const adjustExerciseCount = (delta) => {
@@ -1311,7 +1331,12 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
         delete nextV[lastExId];
         return nextV;
       });
-      onChange({ exercises: newExercises, values: newValues });
+      const nextCompletion = roundExerciseCompletion.map((roundMap) => {
+        const updatedRoundMap = { ...(roundMap || {}) };
+        delete updatedRoundMap[lastExId];
+        return updatedRoundMap;
+      });
+      onChange({ exercises: newExercises, values: newValues, roundExerciseCompletion: nextCompletion });
     }
   };
 
@@ -1392,6 +1417,19 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
           toggleRoundComplete(safeFocusedRoundIdx, { onRestComplete: () => goToNextRoundOrExercise(safeFocusedRoundIdx) });
           return;
         }
+        const completedRepExerciseIdsBeforeTimed = (block.exercises || [])
+          .slice(0, nextTimedIdx)
+          .filter((exercise) => exercise.mode === 'reps')
+          .map((exercise) => exercise.id);
+        if (completedRepExerciseIdsBeforeTimed.length) {
+          updateRoundExerciseCompletion(safeFocusedRoundIdx, (currentRoundCompletion) => {
+            const nextRoundCompletion = { ...currentRoundCompletion };
+            completedRepExerciseIdsBeforeTimed.forEach((exerciseId) => {
+              nextRoundCompletion[exerciseId] = true;
+            });
+            return nextRoundCompletion;
+          });
+        }
         setStartedFromFocus(isFocusFullscreen && !focusDismissedManually);
         runTimedExercise(safeFocusedRoundIdx, nextTimedIdx);
         return;
@@ -1437,6 +1475,7 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
             const val = cellData.value || '10';
             const wt = cellData.weight || '0';
             const isTime = ex.mode === 'time';
+            const isExerciseCompleted = !!roundExerciseCompletion[safeFocusedRoundIdx]?.[ex.id];
             return (
               <button
                 key={`focus-ex-${ex.id}`}
@@ -1445,11 +1484,20 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
                   nextValues[safeFocusedRoundIdx] = { ...nextValues[safeFocusedRoundIdx], [ex.id]: { value: v, weight: weight } };
                   onChange({ values: nextValues });
                 }, true, wt)}
-                className={`w-full rounded-2xl p-4 border transition-all text-left ${focusedRoundDone ? 'bg-[#32D74B]/10 border-[#32D74B]/30' : 'bg-black/25 border-white/10 active:scale-[0.99]'}`}
+                className={`w-full rounded-2xl p-4 border transition-all text-left ${
+                  focusedRoundDone || isExerciseCompleted
+                    ? 'bg-[#32D74B]/10 border-[#32D74B]/40'
+                    : 'bg-black/25 border-white/10 active:scale-[0.99]'
+                }`}
               >
-                <div className="text-[10px] font-black uppercase italic tracking-widest text-[#8E8E93] mb-1 truncate">{ex.name}</div>
+                <div className="flex items-center justify-between gap-3 mb-1">
+                  <div className="text-[10px] font-black uppercase italic tracking-widest text-[#8E8E93] truncate">{ex.name}</div>
+                  {isExerciseCompleted && !focusedRoundDone && (
+                    <Check size={14} className="text-[#32D74B] shrink-0" />
+                  )}
+                </div>
                 <div className="flex items-end gap-2">
-                  <span className={`font-black text-4xl tabular-nums italic ${focusedRoundDone ? 'text-[#32D74B]' : 'text-white'}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
+                  <span className={`font-black text-4xl tabular-nums italic ${focusedRoundDone || isExerciseCompleted ? 'text-[#32D74B]' : 'text-white'}`}>{val}{isTime && !val.toString().includes('s') ? 's' : ''}</span>
                   {parseFloat(wt) > 0 && <span className="text-[11px] font-black mb-1 italic uppercase text-red-500">{wt} kg</span>}
                 </div>
               </button>
