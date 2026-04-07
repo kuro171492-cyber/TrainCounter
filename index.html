@@ -1224,12 +1224,6 @@ function SupersetBlock({ block, isExpanded, onToggle, onRemove, onChange, openMo
   }, [isSessionActive, isExpanded]);
 
   useEffect(() => {
-    if (isTimerActive && startedFromFocus && isFocusFullscreen) {
-      setIsFocusFullscreen(false);
-    }
-  }, [isTimerActive, startedFromFocus, isFocusFullscreen]);
-
-  useEffect(() => {
     if (!isSessionActive) {
       setRoundFlowState({});
       return;
